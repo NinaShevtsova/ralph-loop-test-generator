@@ -21,6 +21,9 @@
 // a fenced path, a git rename pair, an unquoted route in a feature file, and an AC tag sitting in a
 // Gherkin comment.
 
+
+import { PROJECT, RUNNER_STATE } from './flows.mjs';
+
 /** Returns hits for a global regex, with 1-based line numbers. */
 function scan(source, pattern) {
   const lines = (source ?? '').split('\n');
@@ -266,7 +269,7 @@ export function excludings(source) {
 /** The only directories a stage-1 turn may touch. Stage 0 has no fence — it builds everything. */
 export const STAGE1_ALLOWED = ['Features/', 'StepDefinitions/', 'Data/'];
 
-const PROJECT_PREFIX = 'framework/src/PetClinic.ApiTests/';
+const PROJECT_PREFIX = `${PROJECT}/`;
 
 /**
  * Repo-relative paths a stage-1 turn had no business changing.
@@ -294,6 +297,23 @@ export function outsideFence(paths) {
     // output produced it: --name-status separates with a tab, -z with a NUL.
     if (/=>|\t|\0/.test(normalised)) return true;
     if (normalised.split('/').includes('..')) return true;
+    // The runner's own tracker is not a stray, and this exemption is narrow on purpose.
+    //
+    // The runner writes the tracker and never commits it (`ralph.mjs` contains no `git commit`), so
+    // an agent running `git add -A` sweeps it into the turn's commit. Measured on a real run: commit
+    // `9b56ba5` carries `S4 todo -> done`, written by the RUNNER after a judge PASS, beside the
+    // agent's own `S5 todo -> review`. Without this, every stage-1 rework turn by an `add -A` agent
+    // is refused for touching a file no agent edited.
+    //
+    // Exempting the PATH does not exempt the CONTENT: `forbiddenStatusWrites` in loop/tracker.mjs
+    // compares every row's status across the turn and refuses — and undoes — anything the agent had
+    // no right to write. This fence asks "did you rewrite the framework"; that one asks "did you
+    // rewrite the scoreboard". Two questions, two guards.
+    //
+    // Exact paths, never a `loop/` prefix: the prompts, the rubrics and the verdicts live there too,
+    // and a turn has no business committing any of them.
+    if (RUNNER_STATE.includes(normalised)) return false;
+
     if (!normalised.startsWith(PROJECT_PREFIX)) return true;
 
     const inner = normalised.slice(PROJECT_PREFIX.length);

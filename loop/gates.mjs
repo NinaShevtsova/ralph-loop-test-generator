@@ -6,10 +6,16 @@
 // rubbish". And `dotnet test` runs the WHOLE suite — that is the only thing which catches an
 // iteration that changed a shared step and broke an already-accepted scenario.
 
+import { SCAFFOLD_ROWS } from '../scripts/manifest.scaffold.mjs';
+
 const SOLUTION = 'framework/ApiTests.sln';
 
 /**
  * The ordered gate steps for one stage. Each step is { name, cmd, args }.
+ *
+ * Which identifier scopes the gate differs by stage, because the two stages' rows are different
+ * things: stage 1's row IS an acceptance criterion (`acId`, which check:tests takes), stage 0's is a
+ * structural task with no AC (`row`, which scopes the manifest).
  *
  * `base` is the ref check:tests fences the turn's changes against. The RUNNER supplies the real
  * value — the SHA it recorded before the turn — because a turn is not obliged to be one commit and
@@ -17,20 +23,32 @@ const SOLUTION = 'framework/ApiTests.sln';
  * `Support/ResourceTracker.cs` and commit 2 adding the feature file passed the fence green.
  * `HEAD~1` survives only as the standalone default, for running the gate by hand on a one-commit turn.
  */
-export function gateSteps(stage, { acId, wave, base = 'HEAD~1' } = {}) {
+export function gateSteps(stage, { acId, row, base = 'HEAD~1' } = {}) {
   if (stage === 'scaffold') {
-    // The wave matters: stage 0 builds in eight of them, so an unscoped manifest check is red by
-    // construction until the last one, and the runner's pre-turn gate treats a red HEAD as fatal.
-    // Measured with wave 1 built, the unscoped check reported 37 problems — stage 0 would have died at
-    // iteration 2 with the prompt telling the agent that state was expected.
-    if (!Number.isInteger(wave) || wave < 1) {
-      throw new Error(`gateSteps: stage "scaffold" needs the target row's wave, got ${wave}`);
+    // The ROW, not its wave. Some scope is needed at all because an unscoped manifest check is red by
+    // construction until the last wave, and the runner's pre-turn gate treats a red HEAD as fatal —
+    // measured with wave 1 built, the unscoped check reported 37 problems.
+    //
+    // The scope is the row because a turn builds one row (design §6.2 — the judge grades a diff, and
+    // a diff spanning several rows cannot be attributed to one of them). Four of the eight waves hold
+    // more than one row, so a wave-scoped POST-turn gate is red by construction on the first row of
+    // each of them: measured on the live run, S6's gate demanded S7's and S8's files and the turn had
+    // no legal way to produce them.
+    //
+    // Validated against the manifest, not against a `S\d+` shape: an id the manifest does not know
+    // would reach check-scaffold.mjs as a scope it must refuse, and the runner would report that as a
+    // red gate — a verdict on the agent's work for what is a wiring fault.
+    if (!SCAFFOLD_ROWS.includes(row)) {
+      throw new Error(
+        `gateSteps: stage "scaffold" needs the target row id, got ${JSON.stringify(row)} — ` +
+          `the manifest knows ${SCAFFOLD_ROWS.join(', ')}`
+      );
     }
     return [
       {
         name: 'check:scaffold',
         cmd: process.execPath,
-        args: ['scripts/check-scaffold.mjs', '--through-wave', String(wave), '--quiet'],
+        args: ['scripts/check-scaffold.mjs', '--through-row', row, '--quiet'],
       },
       { name: 'dotnet build', cmd: 'dotnet', args: ['build', SOLUTION, '--nologo'] },
       { name: 'sut reset', cmd: process.execPath, args: ['scripts/sut.mjs', 'reset'] },
@@ -73,6 +91,12 @@ export function gateSteps(stage, { acId, wave, base = 'HEAD~1' } = {}) {
  *   - the scaffold stage checks `--through-wave wave - 1`, not `wave`. The target wave is what this
  *     turn is about to build. Several rows share a wave (wave 5 has three), so while any row of wave
  *     N is still open, waves 1..N-1 are the complete ones.
+ *
+ * That last one is also why this builder stays WAVE-scoped while `gateSteps` moved to the row. The
+ * pre-turn question is "what is already finished", and at that moment the finished thing is a set of
+ * whole waves: the rows of the target's own wave are in no defined state — a sibling may be `done`,
+ * `todo`, or half-built by a turn that ended red. `--through-row <the row before the target>` would
+ * demand a sibling that the loop has not reached, which is the same fault in the other direction.
  */
 export function preGateSteps(stage, { wave } = {}) {
   if (stage === 'scaffold') {

@@ -61,6 +61,44 @@ message.
 
 ---
 
+## Addendum, 2026-08-07 — the first real iteration, and the question it settled
+
+One iteration of stage 0 with the real actors: agent `claude -p --model sonnet`, judge
+`claude -p --model opus --permission-mode plan`. `MAX_ITER=1`, deliberately, because three things had
+never been exercised together and a fourteen-iteration run would have found that out expensively.
+
+All three came back clean, and each was verified against the repository rather than against the agent's
+own account of it:
+
+- **the agent understood the prompt** — commit `3d13d7a` holds exactly the five wave-1 files, 85
+  insertions, nothing outside the wave;
+- **the judge returned a usable verdict** — first line exactly `VERDICT: PASS`, no fence, no preamble;
+  `parseVerdict` → PASS, `isWellFormed` → true. This was the likeliest point of failure and the main
+  reason for stopping at one iteration;
+- **the runner, not the agent, wrote `done`**, and `check-scaffold --through-wave 1` passes 5/5.
+
+**And it appeared to answer the standing open question.** `dotnet test` against a solution with no
+tests exits 0 — item 1 on the "what would still surprise us" list, the case that would have made every
+stage-0 pre-turn gate red for a reason unrelated to the work.
+
+**That reading was wrong, and it stayed wrong for thirteen rows.** Corrected when S14 became the first
+task with a test to run: S1's csproj never referenced `Microsoft.NET.Test.Sdk`, so `dotnet test` was
+not tolerating zero tests, it was **not running at all**. Measured on the commit before the fix —
+`dotnet test` restores the project and stops, with no test run and no discovery. Measured after —
+`Passed! - Failed: 0, Passed: 3, Skipped: 0, Total: 3`.
+
+The outcome I recorded was right and the reason was not, which is the more dangerous shape: one leg of
+a three-legged gate was absent for thirteen accepted rows while the log said green. Nothing in the
+harness could have caught it. `check-scaffold` verifies that files exist and match their probes,
+`dotnet build` compiles, and the third leg was reporting success for not having run.
+
+One operational fact worth stating because it recurs every run: the runner writes the tracker and never
+commits it (`ralph.mjs` contains no `git commit`, by design), so the tree is dirty afterwards and the
+**next** run refuses at the preflight with "working tree is dirty". Measured. The operator commits the
+tracker between runs, and the message does not say that the dirt is the runner's own doing.
+
+---
+
 ## Blockers — the loop does not work correctly until these are fixed
 
 ### B1. The first stage-1 turn cannot legally finish
@@ -274,3 +312,74 @@ constants, and divergence yields an empty inventory and a green `0 step(s) compa
 
 Also: `loop/verdicts/<id>.report.md` in both `gates.mjs:45` and `ralph.mjs:669` — drift there silently
 costs the judge its machine report; `framework/ApiTests.sln` in three places; `loop/STEPS.md` in three.
+
+---
+
+## Addendum, 2026-08-09 — C8 and T1 closed, and one prescription corrected
+
+### C8, first half — the silent exit 0
+
+**The defect is real, and `subst` is what still produced it.** Measured with `Z:` substituted to the
+repository: `node Z:\scripts\sut.mjs bogus` printed **nothing** and exited **0**, while the same
+command through the real path printed the usage error and exited 2. Through a *junction* the CLI
+already ran — `realpathSync.native` resolves those — so the comment in `sut.mjs` named a case that
+had since been fixed while the live one went unnamed.
+
+**The obvious fix — compare `import.meta.url` against `realpathSync.native(argv[1])` and refuse when
+they differ — is wrong in the other direction.** `import.meta.url` and `fs.realpathSync` both KEEP an
+8.3 short name; only `realpathSync.native` expands it. `os.tmpdir()` here is
+`C:\Users\N78A3~1.SHE\AppData\Local\Temp`, and `tests/ralph.test.mjs` builds its clone under it.
+Measured with the one-sided form in place: a healthy `node scripts/steps-inventory.mjs` inside that
+clone was called a broken invocation, its gate went red, and the SPEC_UNCLEAR test failed on a
+question that never reached the tracker.
+
+`lib.mjs:invocation` therefore reduces **both** sides and compares the results, and answers `broken`
+only when `argv[1]` names this file and the two cannot be reconciled. Junction, `subst` and 8.3 short
+path now all answer `cli` and run — measured. The refusal is the residual, and because the name check
+needs no realpath at all, `node <anything>/sut.mjs` can no longer end in a silent 0 by any route: it
+either does the work or exits non-zero. `steps-inventory.mjs`, the other half of C8, uses the same
+guard; its own un-hardened form did not even realpath.
+
+### C8, second half — proving the reset happened
+
+`reset` proved only that `/pettypes` answers `200`, which an application that was never restarted
+answers too. Two proofs replace it, and `reset` is the only command that takes them.
+
+**The container's own start time.** Measured across `docker restart petclinic`:
+`2026-08-09T17:51:55.794465458Z` → `2026-08-09T17:56:13.340830095Z`. Read before and after, and an
+unmoved or unreadable value is a refusal — including a missing *baseline*, which is only legitimate
+when the container did not exist and was created.
+
+**The seed the restarted application serves.** Measured on a fresh container: `pettypes` 6, `owners`
+10, `pets` 13, `visits` 4. It is kept alongside the start time rather than instead of it, because the
+two prove different things and one live case separates them: with `PETCLINIC_CONTAINER` pointed at a
+throwaway container while the probe still reached a `petclinic` holding one extra owner, the start
+time moved and the gate would have gone green — the seed check refused with
+`owners: 11, seed 10`, exit 1. Only the ABOVE-seed direction refuses; below-seed cannot be leftover
+data and would stop the loop for an image change.
+
+### T1 — the two documents that steer quality
+
+The acceptance test was built and run. A nine-line bag of tokens for `loop/PROMPT.tests.md` and a
+27-numbered-stub skeleton for `loop/rubrics/tests.md`, in a throwaway copy of the repository:
+
+| | prompt + rubric tests |
+|---|---|
+| skeletons against the tests as they were | **40 / 40 green** |
+| skeletons against the tests now | **17 red**, 42 green |
+
+Two realistic single-rule mutations were measured too, since a merge garbling one rule is likelier
+than a wholesale replacement: moving `npm run sut -- reset` to the end of the gate list, and trimming
+item 17 to its headline. Both are caught.
+
+What the new assertions pin is structural or cross-file rather than lexical: the block membership
+(A 1-4, B 5-10, **C 11-17**, D 18-22, E 23-27), every `§` citation resolving in
+`context-and-conventions.md`, the verdict contract parsing with `loop/verdict.mjs`'s own parser
+**outside** any fence, a floor under every item and every prompt section, the five gate commands in
+order inside the protocol section, the fence and the forbidden list as lists under their own
+headings, and both worked examples — the Gherkin one holding exactly one tagged scenario with no
+path, verb or status code in a step line, and the JSON one parsing to a single AC-keyed block.
+
+One correction to the plan for this work: the rubric's block structure is **A 4 / B 6 / C 7 / D 5 /
+E 5 = 27**, not the 26 the body of this review records. Item 17 is the §10.9 item added when B2 was
+fixed, and it is in block C.

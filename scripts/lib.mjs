@@ -4,9 +4,9 @@
 // a check requires first learning a check framework, the check gets switched off at the first red.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, realpathSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { basename, dirname, join, resolve } from 'node:path';
 
 // The default spawnSync maxBuffer is 1 MB, and exceeding it KILLS the child, sets status to null
 // and turns a command that exited 0 into ok:false with truncated output. `dotnet test` with a few
@@ -33,6 +33,107 @@ export function repoRoot(importMetaUrl) {
   }
 
   return derived;
+}
+
+/**
+ * How a script file was reached: `'cli'`, `'import'` or `'broken'`.
+ *
+ * The guard every one of these scripts needs — "act as a CLI only when this file IS the main
+ * module" — is usually written as `import.meta.url === pathToFileURL(process.argv[1]).href`, and in
+ * that shape it fails **silently**: the two disagree, the whole CLI body is skipped, and the process
+ * exits 0 having done nothing. `runGate` grades a step on its exit code alone, so `sut reset` then
+ * reports a database it never reset and design D-09 is switched off without a word.
+ *
+ * The two spellings disagree more easily than they look, and in BOTH directions. Measured here:
+ *
+ *   - through `subst Z:` to the repository, `import.meta.url` keeps the substituted drive
+ *     (`file:///Z:/scripts/sut.mjs`) while `realpathSync.native` resolves it to `C:\...` — so a
+ *     comparison against the native real path says "not the main module" for a file that is;
+ *   - under an 8.3 short path — `C:\Users\N78A3~1.SHE\AppData\Local\Temp\...`, which is what
+ *     `os.tmpdir()` returns on this machine — it is the other way round: `import.meta.url` and
+ *     `fs.realpathSync` both KEEP `N78A3~1.SHE`, and only `realpathSync.native` expands it to
+ *     `n.shevtsova`. `tests/ralph.test.mjs` builds its clone there, so a native-only comparison
+ *     calls a perfectly healthy `node scripts/steps-inventory.mjs` broken.
+ *
+ * So neither spelling is canonical on its own, and the fix is not to pick one: it is to reduce BOTH
+ * sides the same way and compare the results. Junctions, symlinks, subst drives and short paths then
+ * all resolve to the same file and answer `'cli'` — measured through a junction and through `subst`,
+ * the CLI runs normally.
+ *
+ * `'broken'` is what makes the remainder safe. If the two sides still disagree while `argv[1]` names
+ * THIS file, something was invoked and could not be confirmed, and the caller must fail loudly
+ * rather than fall through to the inert branch. Because that name check does not depend on any
+ * realpath, `node <anything>/sut.mjs` can no longer end in a silent 0 by any route: it either does
+ * the work or exits non-zero.
+ *
+ * An import — a test importing the module while `argv[1]` names some other file — still answers
+ * `'import'` and stays silent, which `tests/sut.test.mjs` depends on.
+ *
+ * `realpath` is injectable so all three answers can be driven from a test.
+ */
+export function invocation(moduleUrl, entry, realpath = realpathSync.native) {
+  if (typeof entry !== 'string' || entry === '') return 'import';
+
+  // The strongest identity available for a path, falling back rather than throwing: `realpath`
+  // needs the file to exist, and "it is gone" is a state this function has to survive.
+  const identity = (path) => {
+    for (const attempt of [() => realpath(path), () => resolve(path)]) {
+      try {
+        const value = attempt();
+        if (value) return process.platform === 'win32' ? value.toLowerCase() : value;
+      } catch {
+        /* try the next one */
+      }
+    }
+    return '';
+  };
+
+  let own;
+  try {
+    own = fileURLToPath(moduleUrl);
+  } catch {
+    return 'import';
+  }
+
+  const mine = identity(own);
+  const theirs = identity(entry);
+  if (mine !== '' && mine === theirs) return 'cli';
+
+  // Case-insensitively on win32, where `node scripts\SUT.mjs` names the same file.
+  const typed = basename(entry);
+  const name = basename(own);
+  const named =
+    process.platform === 'win32' ? typed.toLowerCase() === name.toLowerCase() : typed === name;
+
+  return named ? 'broken' : 'import';
+}
+
+/**
+ * The diagnosis for a `'broken'` invocation. Names the typed path and the real path, because those
+ * two disagreeing IS the fault and neither one alone shows it.
+ *
+ * `consequence` is the caller's one line about what silently did not happen — the reason this is
+ * worth a non-zero exit rather than a shrug.
+ */
+export function brokenInvocationMessage(moduleUrl, entry, consequence = '') {
+  const own = basename(fileURLToPath(moduleUrl));
+  let real;
+  try {
+    real = realpathSync.native(entry);
+  } catch (error) {
+    real = `<could not be resolved: ${error?.message ?? error}>`;
+  }
+
+  return [
+    `${own}: refusing to run — invoked as a command, but Node did not resolve this file as the main module.`,
+    `${own}:   typed path   ${entry}`,
+    `${own}:   real path    ${real}`,
+    `${own}:   module url   ${moduleUrl}`,
+    `${own}: the file Node loaded and the file the command named do not reduce to the same path.`,
+    `${own}: junctions, symlinks, subst drives and 8.3 short paths are reconciled before this point,`,
+    `${own}: so what is left is a path that does not exist or points into a different checkout.`,
+    ...(consequence ? [`${own}: ${consequence}`] : []),
+  ].join('\n');
 }
 
 /**

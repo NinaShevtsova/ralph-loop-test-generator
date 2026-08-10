@@ -5,9 +5,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { repoRoot } from '../scripts/lib.mjs';
+import { isWellFormed, parseVerdict, VERDICTS } from '../loop/verdict.mjs';
 
 const ROOT = repoRoot(import.meta.url);
 const scaffold = () => readFileSync(join(ROOT, 'loop/rubrics/scaffold.md'), 'utf8');
+const conventions = () =>
+  readFileSync(join(ROOT, 'docs/specs/petclinic/context-and-conventions.md'), 'utf8');
 
 /** Numbered rubric items: lines that start with `N.` at the left margin. */
 const items = (text) => [...text.matchAll(/^(\d+)\.\s+/gm)].map((m) => Number(m[1]));
@@ -223,4 +226,239 @@ test('the tests rubric tells the judge not to re-check what check-tests.mjs alre
   assert.match(section, /check-tests\.mjs/);
   assert.match(section, /data block|block under this AC|this AC's id/i);
   assert.match(section, /item 15/, 'and say which item it is half of, so the other half is not dropped too');
+});
+
+// ── T1: pinned by structure and by instruction, not by vocabulary ─────────────
+//
+// The mutation review replaced the whole of `loop/rubrics/tests.md` — 209 lines — with a keyword
+// skeleton of numbered stubs, and the suite stayed green: every assertion was `assert.match(text,
+// /token/)`, which proves a word is somewhere in the file and nothing more. This document and
+// `loop/PROMPT.tests.md` are what made every judge rejection in this run possible, and they had the
+// least real coverage in the suite.
+//
+// What follows pins what a skeleton cannot fake: which items live in which block, that every spec
+// section the rubric cites resolves in the spec, that the verdict contract parses with the runner's
+// own parser outside any fence, and that each of the 27 items states its rule rather than its
+// keyword. The acceptance test for this work is that a keyword skeleton goes red.
+
+/** The blocks, and exactly which item numbers belong to each. */
+const BLOCKS = {
+  'A. Coverage of the AC': [1, 2, 3, 4],
+  'B. Anti-cheat — green about nothing': [5, 6, 7, 8, 9, 10],
+  'C. Rules of §10': [11, 12, 13, 14, 15, 16, 17],
+  'D. Usable by a human': [18, 19, 20, 21, 22],
+  'E. Hygiene and reuse': [23, 24, 25, 26, 27],
+};
+
+/**
+ * The rubric with its line endings normalised. The file is CRLF on this machine, and every check
+ * below is about where text sits relative to a line, so a stray `\r` would decide whether a heading
+ * matches — a property of the checkout, not of the document.
+ */
+const rubric = () => testsRubric().replace(/\r\n/g, '\n');
+
+/** One item's body with runs of whitespace collapsed, so a rule that wraps still reads as a rule. */
+const flat = (text, n) => item(text, n).replace(/\s+/g, ' ').trim();
+
+/** Item numbers grouped by the block heading they appear under, in document order. */
+function itemsByBlock(text) {
+  const grouped = new Map();
+  let current = null;
+  for (const line of text.split('\n')) {
+    const heading = /^## ([A-E]\. .+?)\s*$/.exec(line);
+    if (heading) {
+      current = heading[1];
+      grouped.set(current, []);
+      continue;
+    }
+    const numbered = /^(\d+)\.\s+/.exec(line);
+    if (numbered) grouped.set(current, [...(grouped.get(current) ?? []), Number(numbered[1])]);
+  }
+  return grouped;
+}
+
+test('the tests rubric blocks hold exactly the items they are supposed to hold', () => {
+  // Counting 27 items and finding five headings, which is all this file did before, passes just as
+  // well for 27 items dumped under one heading. The judge weighs anti-cheat differently from
+  // hygiene, and the block an item sits in is the only thing that says which it is. A merge that
+  // lands item 17 — §10.9, the widest blast radius in §10 — under "Hygiene and reuse" changes what
+  // the rubric means, and nothing else in the suite would see it.
+  assert.deepEqual(Object.fromEntries(itemsByBlock(rubric())), BLOCKS);
+});
+
+test('the tests rubric numbers its items 1..27 with no gap and no repeat', () => {
+  const numbers = Object.values(BLOCKS).flat();
+  assert.deepEqual(numbers, Array.from({ length: 27 }, (_, i) => i + 1));
+  assert.deepEqual(items(rubric()), numbers, 'the document order must be the numeric order');
+});
+
+/** Section numbers of the conventions file, each with the numbered rules inside it. */
+function specSections() {
+  const sections = new Map();
+  let current = null;
+  for (const line of conventions().split('\n')) {
+    const heading = /^## (\d+)\. /.exec(line);
+    if (heading) {
+      current = Number(heading[1]);
+      sections.set(current, new Set());
+      continue;
+    }
+    const rule = /^(\d+)\. /.exec(line);
+    if (rule && current !== null) sections.get(current).add(Number(rule[1]));
+  }
+  return sections;
+}
+
+test('every spec section the tests rubric cites resolves in the conventions file', () => {
+  // The rubric tells the judge that every bare § reference is to
+  // docs/specs/petclinic/context-and-conventions.md. A citation that does not resolve sends the
+  // judge to read nothing, and it fails in the silent direction: the judge cannot report "that
+  // section does not exist", it simply has less to go on and rejects when uncertain.
+  const sections = specSections();
+  const cited = [...testsRubric().matchAll(/§(\d+)(?:\.(\d+))?/g)];
+  assert.ok(cited.length >= 10, `the rubric leans on the spec; found only ${cited.length} citations`);
+
+  for (const [ref, section, rule] of cited) {
+    const n = Number(section);
+    assert.ok(sections.has(n), `${ref} cites section ${n}, which the conventions file does not have`);
+    if (rule !== undefined) {
+      assert.ok(
+        sections.get(n).has(Number(rule)),
+        `${ref} cites rule ${rule} of section ${n}, which does not exist there`
+      );
+    }
+  }
+});
+
+test('the §10 items cite the §10 rule they are the rubric side of', () => {
+  // Existence is not enough. §10.1 and §10.9 give near-opposite instructions about the same seeded
+  // pet type — take the first element, except in the two ACs that must create their own — and an
+  // item pointing at the wrong one reads as authority for the wrong rule.
+  const expected = { 3: '§3', 9: '§7', 11: '§10.1', 12: '§10.4', 16: '§10.8', 17: '§10.9' };
+  const text = rubric();
+  for (const [n, ref] of Object.entries(expected)) {
+    assert.ok(
+      item(text, Number(n)).includes(ref),
+      `item ${n} must cite ${ref} — it is that rule's entry in the rubric`
+    );
+  }
+
+  // Items 13, 14 and 15 carry §10.5, §10.6 and the data rule without citing a number, so this is a
+  // floor rather than a per-item requirement.
+  const blockC = BLOCKS['C. Rules of §10'].map((n) => item(text, n)).join('\n');
+  const rules = new Set([...blockC.matchAll(/§10\.(\d+)/g)].map((m) => m[1]));
+  assert.ok(rules.size >= 4, `block C must carry the §10 rules by number, found ${rules.size}`);
+});
+
+/** The lines of `text` that are not inside a fenced code block. */
+function outsideFences(text) {
+  const kept = [];
+  let inside = false;
+  for (const line of text.split('\n')) {
+    if (/^\s*```/.test(line)) {
+      inside = !inside;
+      continue;
+    }
+    if (!inside) kept.push(line);
+  }
+  return kept;
+}
+
+test('the verdict contract stands outside every fence and parses with the runner own parser', () => {
+  // `text.includes('VERDICT: PASS')` is satisfied by the worked example inside the fence at the
+  // bottom of the file — which is the one place the judge must NOT copy the line from, because a
+  // fenced first line is read as REJECT. The parser is strict on purpose (verdict.test.mjs pins
+  // that), so a decorated line silently throws away a genuine PASS and costs an iteration.
+  const bare = outsideFences(rubric()).map((line) => line.trim());
+  for (const verdict of VERDICTS) {
+    const line = `VERDICT: ${verdict}`;
+    assert.ok(bare.includes(line), `${line} must appear as a bare line, outside any code fence`);
+    assert.equal(parseVerdict(line), verdict, 'and the runner must parse it back to itself');
+    assert.equal(isWellFormed(line), true);
+  }
+
+  // The worked example still has to exist — it is where the judge learns the finding format — so
+  // this is not "no fenced verdict", it is "not ONLY a fenced verdict".
+  assert.match(testsRubric(), /```[\s\S]*VERDICT: REJECT[\s\S]*```/);
+});
+
+test('the tests rubric tells the judge that nothing may precede the verdict line', () => {
+  // The contract is worth nothing without this sentence: an LLM's default is a line of preamble, and
+  // the runner reads the first non-empty line. Each decoration named is one habit ruled out.
+  const text = rubric();
+  assert.match(text, /first line of your reply must be exactly/i);
+  assert.match(text, /Nothing may precede it/i);
+  for (const decoration of [/code fence/i, /bold/i, /blockquote/i, /heading/i, /full stop/i]) {
+    assert.match(text, decoration, `the rubric must name ${decoration} as a way to lose the verdict`);
+  }
+  assert.ok(
+    text.includes('SPEC UNCLEAR'),
+    'and the space-instead-of-underscore spelling, which parses as REJECT'
+  );
+});
+
+test('no rubric item is a stub', () => {
+  // A numbered line with a phrase after it satisfies every count in this file and instructs nobody.
+  // The shortest real item is 89 characters — item 25, the hygiene list — so 80 is a floor no
+  // genuine item is near and no stub can clear.
+  const text = rubric();
+  for (const n of items(text)) {
+    const body = item(text, n).trim();
+    assert.ok(body.length >= 80, `item ${n} is ${body.length} characters — that is a stub, not a rule`);
+  }
+});
+
+/**
+ * What each item has to SAY, one entry per item: the specifics the judge cited during this run —
+ * identifiers, section numbers, worked examples, the numbers in the failure modes — rather than the
+ * item's vocabulary. Checked inside the body of the numbered item that owns it, which is the part a
+ * bag of tokens cannot satisfy.
+ */
+const OBLIGATIONS = {
+  1: [/same order/i, /When/, /merged or reordered/i],
+  2: [/every/i, /\bsix\b/i, /AC-F02-01/, /named field/i],
+  3: [/data values/i, /auxiliary condition/i, /never the only assertion/i],
+  4: [/one to one/i, /Given/, /one `When`/],
+  5: [/Excluding/, /justified by the AC/i, /BeEquivalentTo/],
+  6: [/cannot fail/i, /NotBeNull/, /HaveCountGreaterThan\(0\)/, /exactly one element/i],
+  7: [/saved API response/i, /literal/i, /matches the response of step/i],
+  8: [/try/, /catch/, /swallow/i],
+  9: [/404/, /no body/i, /dead code/i],
+  10: [/polling loop/i, /retry/i, /ReadinessProbe/],
+  11: [/creates the records it acts on/i, /pettypes/i, /10 owners and 13 pets/],
+  12: [/relative, never absolute/i, /grew by one/i, /AC-F02-01/],
+  13: [/UniqueData/, /400/, /500/],
+  14: [/ResourceTracker/, /teardown/i, /`Given` steps/],
+  15: [/JSON file under this AC/i, /hard-coded/i, /step definition/i],
+  16: [/exactly its own AC/i, /other ACs/i, /invisible in the trace/i],
+  17: [/AC-F01-04/, /AC-F02-10/, /POST \/pettypes/, /cascade/i, /teardown/i],
+  18: [/because/, /EnsureStatus/, /entity ids/i],
+  19: [/`Given` steps or hooks/, /error/i, /failure/i],
+  20: [/yyyy-MM-dd/, /InvariantCulture/, /50 years/i],
+  21: [/domain language/i, /title is out of scope/i, /gives 404/],
+  22: [/only assert/i, /ScenarioState/],
+  23: [/genuinely new, not a rewording/i, /STEPS\.md/, /similarity band/i],
+  24: [/existing\*\* step definition/i, /already accepted/i, /Widening/i],
+  25: [/commented-out/i, /TODO/, /unused step definition/i],
+  26: [/US-06/, /absence/i, /AC-F02-09/],
+  27: [/repeats across ACs/i, /one shared step/i, /drift/i],
+};
+
+test('every rubric item states its rule, not merely its vocabulary', () => {
+  // This is the assertion a keyword skeleton dies on. The review's skeleton carried every token the
+  // old tests grepped for, because those tokens were searched for across the whole file; here each
+  // obligation is checked inside the body of the item that owns it, so a token in the wrong slot is
+  // worth nothing.
+  const text = rubric();
+  assert.deepEqual(
+    Object.keys(OBLIGATIONS).map(Number),
+    items(text),
+    'every item must be pinned, and a new item must arrive with its obligation'
+  );
+  for (const [n, patterns] of Object.entries(OBLIGATIONS)) {
+    const body = flat(text, Number(n));
+    for (const pattern of patterns) {
+      assert.match(body, pattern, `rubric item ${n} no longer states ${pattern}`);
+    }
+  }
 });

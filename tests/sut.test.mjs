@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 
-import { pollUntilReady } from '../scripts/sut.mjs';
+import { invocation } from '../scripts/lib.mjs';
+import { aboveSeed, pollUntilReady, restartVerdict, SEED_COUNTS } from '../scripts/sut.mjs';
 
 /** Starts a stub that returns `codes.shift()` per request, defaulting to the last code. */
 function stub(codes, { headers = {}, body = '[]' } = {}) {
@@ -114,4 +115,91 @@ test('READY_URL appends the probe path exactly once, whatever the base URL ends 
   assert.equal(READY_URL, `${BASE_URL.replace(/\/+$/, '')}/pettypes`);
   assert.equal(READY_URL.match(/pettypes/g).length, 1);
   assert.ok(!READY_URL.includes('//pettypes'));
+});
+
+// ── the reset actually happened (review item C8) ──────────────────────────────
+//
+// `reset` used to prove only that `/pettypes` answers `200` — which an application that was never
+// restarted answers just as well. `runGate` grades this step on its exit code alone, so a reset that
+// did nothing went green, and D-09's promise that a red test means "the test is bad" rather than
+// "the database is dirty" quietly stopped holding. Two independent proofs replace it: the
+// container's own start time, and the seed the restarted application serves.
+
+test('this module stays inert when imported, which is what makes this whole file possible', () => {
+  // The top of this file imports scripts/sut.mjs. If the guard answered `cli` here, the switch would
+  // run docker commands and `process.exit` inside the test runner. argv[1] under `node --test` is
+  // this test file — measured — so the guard sees a name that is not its own and says nothing.
+  assert.equal(invocation(new URL('../scripts/sut.mjs', import.meta.url).href, process.argv[1]), 'import');
+});
+
+test('restartVerdict: a start time that moved is the proof that the container restarted', () => {
+  // Measured across `docker restart petclinic`: 2026-08-09T17:51:55.794465458Z became
+  // 2026-08-09T17:56:13.340830095Z. The timestamps below are those two.
+  assert.equal(
+    restartVerdict('2026-08-09T17:51:55.794465458Z', '2026-08-09T17:56:13.340830095Z'),
+    'moved'
+  );
+});
+
+test('restartVerdict: the same start time on both sides is a container that never restarted', () => {
+  // The whole defect in one value. Without this the readiness probe answers 200 from the same
+  // long-running application and the gate goes green over a database full of the last run's records.
+  assert.equal(
+    restartVerdict('2026-08-09T17:51:55.794465458Z', '2026-08-09T17:51:55.794465458Z'),
+    'unmoved'
+  );
+});
+
+test('restartVerdict: an unreadable start time is never treated as proof', () => {
+  // `docker inspect` failing is the state in which we know least, and it must not be the state that
+  // passes. A missing AFTER is unreadable; so is a missing BEFORE on a container that already
+  // existed, because there is then no baseline the after can be compared against.
+  assert.equal(restartVerdict('2026-08-09T17:51:55.794465458Z', ''), 'unreadable');
+  assert.equal(restartVerdict('', ''), 'unreadable');
+  assert.equal(restartVerdict('', '2026-08-09T17:56:13.340830095Z'), 'unreadable');
+});
+
+test('restartVerdict: a container that had to be created is the one legitimate missing baseline', () => {
+  // Nothing existed to read a start time from, and a container that has just been created cannot be
+  // carrying a previous run's data. This is the only route by which an empty `before` passes.
+  assert.equal(restartVerdict('', '2026-08-09T17:56:13.340830095Z', { created: true }), 'moved');
+  assert.equal(restartVerdict('', '', { created: true }), 'unreadable');
+});
+
+test('SEED_COUNTS is the seed measured on a freshly reset container', () => {
+  // Measured 2026-08-09 against a container that had just been restarted: 6 / 10 / 13 / 4. §10.1 of
+  // the conventions quotes two of them ("10 owners and 13 pets") as the reason literal ids prove
+  // nothing, so a drift here is a drift from the specification the tests are generated against.
+  assert.deepEqual(SEED_COUNTS, { pettypes: 6, owners: 10, pets: 13, visits: 4 });
+});
+
+test('aboveSeed reports a collection holding more than the seed, and names both numbers', () => {
+  // Measured live: POST /owners on a freshly reset container took /owners from 10 to 11, and this is
+  // the shape of every leftover-record condition.
+  const over = aboveSeed({ pettypes: 6, owners: 11, pets: 13, visits: 4 });
+  assert.equal(over.length, 1);
+  assert.match(over[0], /owners/);
+  assert.match(over[0], /11/);
+  assert.match(over[0], /10/, 'the seed it exceeded must be in the message, or it cannot be judged');
+});
+
+test('aboveSeed says nothing about a clean database', () => {
+  assert.deepEqual(aboveSeed({ pettypes: 6, owners: 10, pets: 13, visits: 4 }), []);
+});
+
+test('aboveSeed ignores the below-seed direction, which cannot be leftover data', () => {
+  // A count BELOW the seed is either a different image or a collection read while the seed was still
+  // loading. Neither is the dirty state D-09 cares about, and failing the gate on it would stop the
+  // loop for something that is not a defect. Only the harmful direction is a refusal.
+  assert.deepEqual(aboveSeed({ pettypes: 5, owners: 0, pets: 1, visits: 0 }), []);
+});
+
+test('aboveSeed ignores a collection it could not count, rather than inventing a verdict', () => {
+  // An endpoint that answered 404, or answered something that is not a JSON array, leaves no number.
+  // Treating a missing count as 0 would silently pass; treating it as a failure would make an
+  // unrelated endpoint outage look like a dirty database. It is reported separately, not here.
+  assert.deepEqual(aboveSeed({ owners: 11 }, { owners: 10, visits: 4 }), ['owners: 11, seed 10']);
+  assert.deepEqual(aboveSeed({}, SEED_COUNTS), []);
+  assert.deepEqual(aboveSeed({ owners: 'many' }, SEED_COUNTS), []);
+  assert.deepEqual(aboveSeed(null, SEED_COUNTS), []);
 });

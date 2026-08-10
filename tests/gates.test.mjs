@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { gateSteps, preGateSteps } from '../loop/gates.mjs';
 
 test('the scaffold gate runs the manifest check, then build, then reset and test', () => {
-  const steps = gateSteps('scaffold', { acId: 'S1', wave: 1 });
+  const steps = gateSteps('scaffold', { acId: 'S1', row: 'S1' });
   assert.deepEqual(
     steps.map((step) => step.name),
     ['check:scaffold', 'dotnet build', 'sut reset', 'dotnet test']
@@ -57,7 +57,7 @@ test('the tests gate defaults its base to HEAD~1, never to nothing', () => {
 
 test('every gate step names a command and an argument array', () => {
   for (const stage of ['scaffold', 'tests']) {
-    for (const step of gateSteps(stage, { acId: 'X', wave: 1 })) {
+    for (const step of gateSteps(stage, { acId: 'X', row: 'S1' })) {
       assert.equal(typeof step.name, 'string');
       assert.equal(typeof step.cmd, 'string');
       assert.ok(Array.isArray(step.args), `${step.name}: args must be an array`);
@@ -66,20 +66,42 @@ test('every gate step names a command and an argument array', () => {
 });
 
 test('gateSteps rejects an unknown stage', () => {
-  assert.throws(() => gateSteps('nope', { acId: 'X', wave: 1 }), /unknown stage/);
+  assert.throws(() => gateSteps('nope', { acId: 'X', row: 'S1' }), /unknown stage/);
 });
 
-test('gateSteps scopes the scaffold manifest check to the wave', () => {
-  // Without this the check covers all 39 entries and is red until the last wave, which the
-  // pre-turn gate reads as a fatal red HEAD.
-  const steps = gateSteps('scaffold', { acId: 'S4', wave: 3 });
-  const check = steps.find((step) => step.name === 'check:scaffold');
-  assert.ok(check.args.includes('--through-wave'));
-  assert.equal(check.args[check.args.indexOf('--through-wave') + 1], '3');
+test('gateSteps scopes the scaffold manifest check to the target ROW, not its wave', () => {
+  // Some scope is needed at all because the unscoped check covers all 39 entries and is red until
+  // the last wave, which the pre-turn gate reads as a fatal red HEAD.
+  //
+  // The scope is the row because a turn builds one row and the judge grades that turn's diff. Four
+  // of the eight waves hold more than one row, so a wave-scoped POST-turn gate is red by
+  // construction on every row of those waves but the last: measured on the live run, S6's gate
+  // demanded `Support/ResourceTracker.cs` (S7) and `Support/ReadinessProbe.cs` (S8), and one row
+  // per turn means the S6 turn had no legal way to produce them.
+  const check = gateSteps('scaffold', { acId: 'S6', row: 'S6' }).find((step) => step.name === 'check:scaffold');
+  assert.ok(check.args.includes('--through-row'));
+  assert.equal(check.args[check.args.indexOf('--through-row') + 1], 'S6');
+  assert.ok(
+    !check.args.includes('--through-wave'),
+    'the post-turn gate must not also pass a wave — check:scaffold refuses both scopes at once'
+  );
 });
 
-test('gateSteps refuses a scaffold gate with no wave', () => {
-  assert.throws(() => gateSteps('scaffold', { acId: 'S1' }), /needs the target row's wave/);
+test('gateSteps refuses a scaffold gate with no row, or a row the manifest does not know', () => {
+  // Refused here rather than left to check-scaffold.mjs: an unknown scope reaching the gate comes
+  // back as a red step, and the runner reports a red gate as a verdict on the agent's work.
+  for (const row of [undefined, null, '', 'S99', 's6', 5]) {
+    assert.throws(
+      () => gateSteps('scaffold', { acId: 'S1', row }),
+      /needs the target row id/,
+      `row ${JSON.stringify(row)} must be refused`
+    );
+  }
+  assert.throws(() => gateSteps('scaffold', { acId: 'S1' }), /needs the target row id/);
+});
+
+test('gateSteps names the rows it knows when it refuses one, so the message is actionable', () => {
+  assert.throws(() => gateSteps('scaffold', { row: 'S99' }), /S1, S2, .*S14/);
 });
 
 test('the tests gate requires an acId', () => {
@@ -130,7 +152,19 @@ test('the scaffold pre-gate checks through the PREVIOUS wave, not the target one
     '4',
     '--quiet',
   ]);
-  assert.equal(gateSteps('scaffold', { acId: 'S1', wave: 5 })[0].args[2], '5', 'the post-turn gate still asks through the target wave');
+});
+
+test('the two gates scope the same wave differently, and that is the point', () => {
+  // S6, S7 and S8 all sit in wave 5 and are three separate turns. Before any of them the finished
+  // tree is waves 1..4 — the pre-turn gate cannot ask for more, because a sibling of the target may
+  // be untouched, half-built or already done and there is no way to tell which. After the turn the
+  // finished tree is exactly the rows up to the target, which is more than waves 1..4 and less than
+  // wave 5. One scope cannot express both.
+  const before = preGateSteps('scaffold', { wave: 5 })[0].args;
+  const after = gateSteps('scaffold', { acId: 'S7', row: 'S7' })[0].args;
+
+  assert.deepEqual(before.slice(1, 3), ['--through-wave', '4']);
+  assert.deepEqual(after.slice(1, 3), ['--through-row', 'S7']);
 });
 
 test('the scaffold pre-gate has no manifest check at all before wave 1', () => {

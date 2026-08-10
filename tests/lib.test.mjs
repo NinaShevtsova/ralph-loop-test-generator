@@ -3,10 +3,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { repoRoot, run, git, gitTry, Verdict } from '../scripts/lib.mjs';
+import {
+  brokenInvocationMessage,
+  git,
+  gitTry,
+  invocation,
+  repoRoot,
+  run,
+  Verdict,
+} from '../scripts/lib.mjs';
 
 const ROOT = repoRoot(import.meta.url);
 
@@ -26,6 +34,115 @@ test('repoRoot ignores CLAUDE_PROJECT_DIR when it does not point at this reposit
     if (saved === undefined) delete process.env.CLAUDE_PROJECT_DIR;
     else process.env.CLAUDE_PROJECT_DIR = saved;
   }
+});
+
+// ── invocation (review item C8) ───────────────────────────────────────────────
+//
+// The defect: a gate step that exits 0 having done nothing. `runGate` grades a step on its exit code
+// alone, so `node scripts/sut.mjs reset` falling through to the inert branch reported a reset that
+// never happened, and design D-09 — the clean database that makes a red test mean "the test is bad"
+// — was switched off in silence. Measured on this machine with `Z:` substituted to the repository:
+// `node Z:\scripts\sut.mjs bogus` printed nothing and exited 0, while the same command through the
+// real path printed the usage error and exited 2.
+//
+// The realpath is injected here so all three answers are driven without a subst drive. Forward
+// slashes throughout: `path.win32.basename` accepts both separators, `path.posix.basename` does not,
+// and a backslash literal would make these tests answer differently on the two platforms.
+
+const SUT = join(ROOT, 'scripts', 'sut.mjs');
+const SUT_URL = pathToFileURL(SUT).href;
+
+/** A realpath that rewrites the paths in `map` and passes everything else through. */
+const realpathThrough = (map) => (path) => map[path] ?? path;
+
+test('invocation answers cli when the typed path resolves to this module', () => {
+  // The subst case as it must now behave for a HEALTHY tree: whatever was typed, both sides reduce
+  // to the same file, so the CLI runs.
+  const realpath = realpathThrough({ '/mounted/scripts/sut.mjs': SUT, [SUT]: SUT });
+  assert.equal(invocation(SUT_URL, '/mounted/scripts/sut.mjs', realpath), 'cli');
+});
+
+test('invocation reduces BOTH sides, so a mount and a short path are still the same file', () => {
+  // Two measured environments, and they break a one-sided comparison in OPPOSITE directions. Under
+  // `subst`, `import.meta.url` keeps the substituted drive and only the real path resolves it. Under
+  // an 8.3 path — `os.tmpdir()` is `C:\Users\N78A3~1.SHE\AppData\Local\Temp` on this machine, and
+  // `tests/ralph.test.mjs` builds its clone there — `import.meta.url` and `fs.realpathSync` both keep
+  // the short name and only `realpathSync.native` expands it. Comparing the module URL against the
+  // native real path of argv[1] therefore calls a healthy `node scripts/steps-inventory.mjs` broken:
+  // measured, that is exactly what happened, and the clone's gate went red.
+  // `resolve` first, so the two sides start from the same spelling on both platforms — a bare
+  // `/mounted/...` becomes `C:\mounted\...` on win32 the moment it goes through a file URL.
+  const substituted = resolve('/mounted/scripts/sut.mjs');
+  const behindIt = resolve('/real/scripts/sut.mjs');
+  const mount = realpathThrough({ [substituted]: behindIt });
+  assert.equal(invocation(pathToFileURL(substituted).href, substituted, mount), 'cli');
+
+  const eightThree = resolve('/vol/SHORT~1/steps.mjs');
+  const longName = resolve('/vol/a-very-long-name/steps.mjs');
+  const expand = realpathThrough({ [eightThree]: longName });
+  assert.equal(invocation(pathToFileURL(eightThree).href, eightThree, expand), 'cli');
+});
+
+test('invocation answers cli for a genuine direct execution, with the real realpath', () => {
+  // Exercises the default argument too — the branch every gate invocation actually takes.
+  assert.equal(invocation(SUT_URL, SUT), 'cli');
+});
+
+test('invocation answers broken when the typed path names this file but is a different file', () => {
+  // The residual, and the reason the silent exit 0 is now unreachable: whatever any realpath does,
+  // a command that names `sut.mjs` and cannot be confirmed as `sut.mjs` gets a refusal rather than
+  // the inert branch. This used to be indistinguishable from an import.
+  assert.equal(invocation(SUT_URL, '/mounted/scripts/sut.mjs', (p) => p), 'broken');
+});
+
+test('invocation answers import when argv[1] names some other file', () => {
+  // This is the case the whole guard exists for, and it must stay silent: `tests/sut.test.mjs`
+  // imports `scripts/sut.mjs`, and a `cli` answer there would run docker inside the test runner.
+  assert.equal(invocation(SUT_URL, '/mounted/tests/sut.test.mjs', (p) => p), 'import');
+  assert.equal(invocation(SUT_URL, '/mounted/loop/ralph.mjs', (p) => p), 'import');
+});
+
+test('invocation treats a missing argv[1] as an import rather than as a broken invocation', () => {
+  // `node -e`, `node --eval`, the REPL: there is no entry path at all, and nothing was invoked.
+  for (const entry of [undefined, '', null, 0]) {
+    assert.equal(invocation(SUT_URL, entry, (p) => p), 'import');
+  }
+});
+
+test('invocation calls a realpath failure broken only when this file was the one named', () => {
+  // A realpath that throws proves nothing either way, so the name on the command line decides. Named
+  // — someone tried to run this script and it cannot be confirmed, which is a refusal. Not named —
+  // an import, and silence.
+  const throws = () => {
+    throw new Error('ENOENT: no such file or directory');
+  };
+  assert.equal(invocation(SUT_URL, '/gone/scripts/sut.mjs', throws), 'broken');
+  assert.equal(invocation(SUT_URL, '/gone/tests/sut.test.mjs', throws), 'import');
+});
+
+test('invocation compares the file name case-insensitively on win32 only', () => {
+  // `node scripts\SUT.mjs` names the same file on Windows and a different one on Linux.
+  const expected = process.platform === 'win32' ? 'broken' : 'import';
+  assert.equal(invocation(SUT_URL, '/mounted/scripts/SUT.mjs', (p) => p), expected);
+});
+
+test('brokenInvocationMessage names the typed path AND the real path, because the pair is the fault', () => {
+  // Either path alone looks correct. It is the disagreement that has to reach the operator, so the
+  // diagnosis is worthless if it prints only one of them.
+  const message = brokenInvocationMessage(SUT_URL, SUT, 'the database was not reset');
+  assert.ok(message.includes(SUT), 'the typed path must be named');
+  assert.ok(message.includes(SUT_URL), 'and the module url it disagreed with');
+  assert.match(message, /real path/);
+  assert.match(message, /the database was not reset/, 'the consequence must survive');
+  assert.match(message, /^sut\.mjs: /, 'every line is prefixed with the script that is refusing');
+});
+
+test('brokenInvocationMessage still produces a diagnosis when the typed path cannot be resolved', () => {
+  // The refusal must never itself throw: an unresolvable path is precisely one of the states that
+  // gets here, and a crash would replace the diagnosis with a stack trace.
+  const message = brokenInvocationMessage(SUT_URL, '/no/such/scripts/sut.mjs');
+  assert.match(message, /could not be resolved/);
+  assert.match(message, /refusing to run/);
 });
 
 // ── run ───────────────────────────────────────────────────────────────────────

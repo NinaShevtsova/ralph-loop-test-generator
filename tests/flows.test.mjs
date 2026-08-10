@@ -17,6 +17,7 @@ import {
   flowDocPath,
   featurePath,
   dataPath,
+  RUNNER_STATE,
 } from '../scripts/flows.mjs';
 import { STAGE1_ALLOWED } from '../scripts/checks.mjs';
 import { SCAFFOLD_MANIFEST, PROJECT_DIR } from '../scripts/manifest.scaffold.mjs';
@@ -197,4 +198,29 @@ test('the two toolchain escapees are ignored, and real work in the same director
     assert.ok(!ignored(dataPath(group)), `${dataPath(group)} must NOT be ignored`);
   }
   assert.ok(!ignored(`${PROJECT}/StepDefinitions/OwnerSteps.cs`), 'step definitions must NOT be ignored');
+});
+
+// ── The runner and the fence must name the same files ───────────────────────────────
+
+test('every stage the runner can run has a tracker the fence exempts', async () => {
+  // This is the drift guard, and it is the point of putting the paths in one file. `checks.mjs`
+  // exempts RUNNER_STATE from the stage-1 diff fence; `config.mjs` points each stage at a tracker.
+  // Spelled out separately they could disagree, and the failure is quiet and one-directional: the
+  // runner writes a file the fence then refuses, so every rework turn fails for touching it.
+  const { STAGES } = await import('../loop/config.mjs');
+  const { RUNNER_STATE } = await import('../scripts/flows.mjs');
+
+  for (const [name, stage] of Object.entries(STAGES)) {
+    assert.ok(
+      RUNNER_STATE.includes(stage.tracker),
+      `stage ${name} writes ${stage.tracker}, which the stage-1 fence would refuse`
+    );
+  }
+  assert.equal(RUNNER_STATE.length, Object.keys(STAGES).length, 'RUNNER_STATE has an entry no stage uses');
+});
+
+test('the exempted trackers exist on disk', () => {
+  for (const relative of RUNNER_STATE) {
+    assert.ok(existsSync(join(ROOT, relative)), `${relative} is exempted from the fence but does not exist`);
+  }
 });

@@ -24,3 +24,12 @@ framework/**/TestResults/
 # Features/ directory. Generated code should not be committed in any case.
 framework/**/packages.lock.json
 framework/**/*.feature.cs
+
+# Visual Studio per-user state: window layout, a SQLite index, a file-content index, test logs.
+# It changes every time the IDE is opened or a file is clicked, and .vsidx files are locked tightly
+# enough that `git add` fails on them outright.
+#
+# Bare `.vs/` matches the directory at ANY depth. The first version of this rule was
+# `framework/**/.vs/`, which covered the copy the loop trips over and missed the one at the
+# repository root — so a `git add -A` committed four files of IDE state before anyone noticed.
+.vs/

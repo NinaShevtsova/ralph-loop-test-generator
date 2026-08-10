@@ -354,3 +354,81 @@ test('a valid turn passes every check, so none of the above is a fence that reje
   assert.match(out, /check:tests OK — \d+ check\(s\)/);
   assert.doesNotMatch(out, /FAIL/);
 });
+
+// ── One sentence bound as both Given and When ─────────────────────────────────────
+
+test('the same sentence bound as Given and When is reuse, not a near-duplicate', (t) => {
+  // Measured against the real framework after stage 0 built its 22 request steps: the gate hard-failed
+  // on six pairs with "reuse the existing sentence instead of rewording it" — against sentences that
+  // were byte identical. Reqnroll's documented way to make a step usable as a precondition and as an
+  // action is exactly this, so the check was punishing the maximum reuse it exists to encourage, and
+  // stage 1 could not have taken its first turn.
+  const root = repo(t);
+  write(
+    root,
+    `${PROJECT}/StepDefinitions/DualSteps.cs`,
+    `using Reqnroll;
+
+[Binding]
+public sealed class DualSteps
+{
+    [Given("a visit is recorded for the pet")]
+    public void GivenAVisitIsRecorded() { }
+
+    [When("a visit is recorded for the pet")]
+    public void WhenAVisitIsRecorded() { }
+}
+`
+  );
+  commitAll(root, 'dual binding');
+
+  const result = runCheck(root, '--ac', 'AC-F01-01');
+  assert.doesNotMatch(result.out, /near-duplicate/, result.out);
+});
+
+test('a rewording across kinds is still caught, so the exemption is not a hole', (t) => {
+  // Only IDENTICAL text is exempt. `an owner is registered` against `an owner has been registered`
+  // scores 1.00 and is a rewording whichever attributes carry it — and that pair is the canonical
+  // one this band was rebuilt for, after `has` was left out of the stop words and it scored 0.33.
+  const root = repo(t);
+  write(
+    root,
+    `${PROJECT}/StepDefinitions/RewordedSteps.cs`,
+    `using Reqnroll;
+
+[Binding]
+public sealed class RewordedSteps
+{
+    [When("an owner has been registered")]
+    public void WhenAnOwnerHasBeenRegistered() { }
+}
+`
+  );
+  commitAll(root, 'reworded');
+
+  const result = runCheck(root, '--ac', 'AC-F01-01');
+  assert.match(result.out, /near-duplicate steps \(1\.00\)/, result.out);
+  assert.equal(result.status, 1);
+});
+
+test('two Givens of the same sentence are still a duplicate, because the kind is the same', (t) => {
+  const root = repo(t);
+  write(
+    root,
+    `${PROJECT}/StepDefinitions/TwiceSteps.cs`,
+    `using Reqnroll;
+
+[Binding]
+public sealed class TwiceSteps
+{
+    [Given("an owner is registered")]
+    public void GivenAgain() { }
+}
+`
+  );
+  commitAll(root, 'twice');
+
+  const result = runCheck(root, '--ac', 'AC-F01-01');
+  assert.match(result.out, /near-duplicate steps \(1\.00\)/, result.out);
+  assert.equal(result.status, 1);
+});

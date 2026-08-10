@@ -42,7 +42,15 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 import { repoRoot, run, git, gitTry } from '../scripts/lib.mjs';
 import { parseArgs, stageConfig, FLOW_GROUPS, flowDocPath, featurePath } from './config.mjs';
-import { parseRows, countByStatus, pickTarget, setStatus, firstDone, validateTable } from './tracker.mjs';
+import {
+  parseRows,
+  countByStatus,
+  pickTarget,
+  setStatus,
+  firstDone,
+  validateTable,
+  forbiddenStatusWrites,
+} from './tracker.mjs';
 import { gateSteps, preGateSteps, runGate } from './gates.mjs';
 import { targetSection, judgePrompt, runAgent, runJudge } from './invoke.mjs';
 import {
@@ -313,6 +321,30 @@ const writeTracker = (markdown) => {
 
 const setRow = (id, status) => writeTracker(setStatus(tracker(), id, status));
 
+/**
+ * The failure text for a turn that wrote a tracker row it had no right to write.
+ *
+ * The row and the transition are NAMED, one line each. "The tracker changed" sends the operator to
+ * diff a 200-line file, and this same text is what the next turn's prompt carries as its findings —
+ * an agent told only that something moved cannot tell which cell to leave alone.
+ */
+const describeForbiddenWrites = (writes) =>
+  [
+    'the turn rewrote tracker rows an agent may not write:',
+    ...writes.map(({ id, from, to }) =>
+      from === null
+        ? `  - ${id}: added by the turn as \`${to}\` — the row list is fixed before the run starts`
+        : to === null
+          ? `  - ${id}: was \`${from}\` and the turn removed the row from the table`
+          : `  - ${id}: \`${from}\` -> \`${to}\` (restored to \`${from}\`)`
+    ),
+    '',
+    'A turn may move the row it was given from `todo` or `rework` to `review` or `blocked`, and must',
+    'leave every other row exactly as it found it. `done` is written by the RUNNER on a PASS from an',
+    'independent judge — so a row a turn sets to `done` is one the loop then skips for the rest of the',
+    'run, with the work never built and nothing else looking.',
+  ].join('\n');
+
 /** The code of the exemplar scenario, for the judge. Null until something is accepted. */
 function exemplarFor(row) {
   if (config.stage !== 'tests') return null;
@@ -456,23 +488,29 @@ function preGate(row) {
 const WATCHED = ['framework'];
 
 /**
- * The probe's own scope must be clean before the first turn — with or without `--allow-dirty`.
+ * Uncommitted work in the probe's scope is REPORTED, not refused.
  *
- * This replaced a baseline subtraction, and the reason is worth keeping. That version compared status
- * LINES, and a porcelain line is byte-identical whether a file holds only the operator's edit or their
- * edit PLUS the agent's uncommitted scenario: measured, ` M …/F.feature` in both cases. So one dirty
- * fenced file masked the agent's work — filtered out as the operator's, graded green from the working
- * tree, and never shown to the judge. Requiring the scope clean shuts that by construction instead of
- * by comparison, and leaves `--allow-dirty` doing exactly what it is documented to do: letting the
- * operator keep unrelated edits somewhere else.
+ * It was a refusal, and one real iteration proved that wrong. A turn hit a red gate; the prompt
+ * forbids committing on a red gate, so it left its work on disk — correct on every count — and the
+ * loop then could not resume: exit 2, "these are uncommitted". Obeying the protocol made the loop
+ * unresumable, and the only way out was a human committing the agent's work for it.
+ *
+ * The refusal was redundant as well as harmful. Its purpose was that a dirty file here could mask a
+ * turn's work, because a porcelain line is byte-identical whether a file holds the operator's edit
+ * alone or their edit PLUS the agent's — measured, ` M …/F.feature` in both cases. But the POST-turn
+ * probe does not compare, it requires the scope CLEAN: anything still uncommitted when the turn ends
+ * fails it, whoever wrote it. Masking is impossible either way, so the strictness bought nothing and
+ * cost the ability to recover from an honest refusal.
+ *
+ * Saying it out loud still matters. The turn is told what it inherited and that committing it is its
+ * job, rather than finding files it did not write and having to guess.
  */
 const dirtyWatched = gitTry(ROOT, 'status', '--porcelain', '--untracked-files=normal', '--', ...WATCHED);
 if (!dirtyWatched.ok) die(`cannot read the working tree — ${dirtyWatched.error.split('\n')[0]}`);
 if (dirtyWatched.out !== '') {
-  die(
-    'the loop must be able to tell your work from a turn\'s, and these are uncommitted:\n' +
-      `${dirtyWatched.out}\n` +
-      'commit or stash them — `--allow-dirty` does not extend to `framework/`'
+  console.error(
+    `ralph: uncommitted in ${WATCHED.join(', ')} before this run:\n${dirtyWatched.out}\n` +
+      'ralph: a turn must commit what it inherits, or it is refused for leaving work behind.'
   );
 }
 
@@ -594,6 +632,10 @@ for (;;) {
   // `review` row, where the commit legitimately happened in an earlier iteration.
   let headBeforeTurn = null;
 
+  // The tracker exactly as the agent found it, for the same reason and with the same null. No agent
+  // runs on the recovery path, so there is no window in which the file could have been rewritten.
+  let trackerBeforeTurn = null;
+
   // ── The agent turn (skipped when recovering a row left in `review`) ───────────────
   if (phase === 'agent') {
     const pre = preGate(row);
@@ -643,6 +685,14 @@ for (;;) {
         isExemplarCandidate: config.stage === 'tests' && firstDone(tracker()) === null,
       });
 
+    // Taken as late as possible, and through `tracker()` — the same validated read every other part
+    // of the runner uses. Both halves matter. From here until the comparison below the AGENT is the
+    // only writer: during a turn the runner touches `loop/verdicts/` and nothing else. And a row the
+    // runner itself set to `done` at the end of the previous iteration is already `done` here, so the
+    // agent folding that still-uncommitted file into its own commit is not a change — measured, that
+    // is exactly what the wave-4 turn did with the runner's `done` for S4.
+    trackerBeforeTurn = tracker();
+
     const { ok, why } = await runAgent(config.agentCmd, prompt, {
       root: ROOT,
       // The SessionStart hook has no other way to know which stage's tracker to read.
@@ -655,6 +705,38 @@ for (;;) {
 
     // An agent that crashed is not a "turn without progress", it is a broken runner. Do not be quiet.
     if (!ok) stopRun(1, `the agent "${config.agentCmd}" did not complete: ${why}`);
+  }
+
+  /*
+   * Did the turn rewrite a row it had no right to touch?
+   *
+   * The agent writes its OWN row and the runner writes `done` on a judge PASS. Nothing deterministic
+   * looked at the rest of the file: `check-scaffold.mjs` grades a file manifest and has no tracker
+   * check at all, the left-behind probe watches only `framework/`, and `validateTable` inspects the table's
+   * STRUCTURE rather than the TRUTH of its statuses. So a turn that flipped an unrelated row to `done`
+   * passed every gate, and `pickTarget` skips a `done` row — the stage then reports complete with a
+   * task never built, which design §6 names as the one outcome this arrangement exists to refuse.
+   *
+   * Not theoretical: the wave-4 turn folded the runner's uncommitted `done` for S4 into its own commit.
+   * That instance was harmless — the diff was exactly the two rows the runner and the agent had each
+   * legitimately written — but nothing would have objected had it not been.
+   *
+   * RESTORED, not merely refused, and that is the half that actually closes the hole. Refusing writes
+   * `rework` on the TARGET row; the tampered row keeps whatever the turn gave it, the next iteration's
+   * snapshot reads that as its baseline, and the skip happens one iteration later in silence. One
+   * logged failure followed by the same silent skip is not a closed hole. The `before` snapshot is the
+   * truth by construction, so putting it back cannot itself be wrong; a row that vanished or appeared
+   * cannot be repaired this way and is reported alone.
+   */
+  let tampering = null;
+  if (trackerBeforeTurn !== null) {
+    const writes = forbiddenStatusWrites(trackerBeforeTurn, tracker(), row.id);
+    if (writes.length > 0) {
+      tampering = describeForbiddenWrites(writes);
+      for (const write of writes) {
+        if (write.from !== null && write.to !== null) setRow(write.id, write.from);
+      }
+    }
   }
 
   /*
@@ -695,7 +777,12 @@ for (;;) {
 
   // ── The gate, run by the runner — the agent is not taken at its word ──────────────
 
-  const gate = runGate(gateSteps(config.stage, { acId: row.id, wave: waveOf(row), base: diffBase }), {
+  // `acId` and `row` are the same tracker id under two names, and only one is read per stage: stage
+  // 1's rows are acceptance criteria, stage 0's are structural tasks that no AC names. The scaffold
+  // gate takes the ROW rather than `waveOf(row)` — this turn built one row, and a wave-scoped gate on
+  // a wave with several rows demands files from turns nobody has been asked to take. `waveOf` is
+  // still what the PRE-turn gate wants; see the note in gates.mjs.
+  const gate = runGate(gateSteps(config.stage, { acId: row.id, row: row.id, base: diffBase }), {
     root: ROOT,
     run,
   });
@@ -711,7 +798,13 @@ for (;;) {
    * outcome this whole arrangement exists to refuse.
    */
   let failure = null;
-  if (!gate.green) {
+  if (tampering) {
+    // FIRST, ahead of the gate. A rewritten row is the more dangerous of the two findings and the one
+    // the next turn must be told about by name: a red gate is about the work, and the work can be
+    // redone, but a `done` written by an agent removes a row from the loop's future entirely. The gate
+    // still ran, so its side effects are unchanged; only its log is not what gets reported.
+    failure = tampering;
+  } else if (!gate.green) {
     failure = `gate red at "${gate.failedAt}"\n${gate.log}`;
   } else {
     /*
@@ -1007,7 +1100,12 @@ for (;;) {
   stagnant = improved ? 0 : stagnant + 1;
 
   console.log(
-    `  ${args.flow ?? config.stage}: ${c.done} done · ${c.rework} rework · ${c.blocked} blocked · ${c.todo} todo`
+    // `review` included, because without it the line does not add up and the operator cannot see
+    // where the missing rows went. Measured: a wave that put three rows into `review` printed
+    // `5 done · 1 rework · 0 blocked · 6 todo` against a 14-row tracker, and the two rows in `review`
+    // were simply absent from the arithmetic.
+    `  ${args.flow ?? config.stage}: ${c.done} done · ${c.review} review · ${c.rework} rework · ` +
+      `${c.blocked} blocked · ${c.todo} todo`
   );
 
   if (!improved && stagnant >= config.noImprovement) {

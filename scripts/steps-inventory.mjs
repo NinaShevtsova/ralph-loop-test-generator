@@ -14,9 +14,8 @@
 
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
-import { repoRoot } from './lib.mjs';
+import { brokenInvocationMessage, invocation, repoRoot } from './lib.mjs';
 
 export const KINDS = ['Given', 'When', 'Then', 'StepDefinition'];
 
@@ -302,10 +301,25 @@ export function collectInventory(root) {
   );
 }
 
-const executedDirectly =
-  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+// The un-hardened form of this guard — a bare `import.meta.url === pathToFileURL(argv[1]).href`,
+// without even the realpath — is the other half of review item C8. `steps:inventory` is the last
+// step of the stage-1 gate, so exiting 0 without regenerating `loop/STEPS.md` hands the judge a
+// stale inventory while the gate says the inventory was rebuilt. See `invocation` in lib.mjs.
+const how = invocation(import.meta.url, process.argv[1]);
 
-if (executedDirectly) {
+if (how === 'broken') {
+  console.error(
+    brokenInvocationMessage(
+      import.meta.url,
+      process.argv[1],
+      'exiting 2 rather than 0, because a silent 0 here leaves loop/STEPS.md stale while the gate ' +
+        'reports that it was regenerated'
+    )
+  );
+  process.exit(2);
+}
+
+if (how === 'cli') {
   const root = repoRoot(import.meta.url);
   const target = join(root, 'loop', 'STEPS.md');
   const markdown = renderInventory(collectInventory(root));

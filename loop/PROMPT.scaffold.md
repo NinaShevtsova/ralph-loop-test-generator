@@ -16,7 +16,7 @@ findings** from the previous round — fix all of them and start nothing else.
    means you are the first iteration.
 1. **`docs/specs/2026-08-05-bdd-api-tests-ralph-loop-design.md` §4** — the authoritative statement of
    what every file is responsible for. This is your specification.
-2. **`loop/trackers/scaffold.md`** — the task details section for your target wave: the exact file
+2. **`loop/trackers/scaffold.md`** — the task details section for your target task: the exact file
    list and the DoD.
 3. **`docs/specs/petclinic/context-and-conventions.md`** — §7 for the route table, §10 for the rules
    the framework must make unbreakable, §11 for behaviour that is not in the contract.
@@ -26,32 +26,40 @@ findings** from the previous round — fix all of them and start nothing else.
 
 ## Protocol of the turn
 
-Take the wave named in the target section. Build **every task in that wave** — that is one
-iteration's worth of work (design D-07).
+Take the **one task** named in the target section and build that. Not its wave — several tasks can
+share a wave, and each of them is a separate turn.
 
-1. Write the files listed in the task details for each task in the wave.
+That is not a style preference. An independent judge grades the **diff** your turn leaves behind, so
+a diff spanning several tasks cannot be attributed to any one of them. Measured: a turn delivered
+S6, S7 and S8 in one commit, the judge was asked about S6 and found real defects in S7's and S8's
+files, the rework touched only those — and S6's own work fell outside the diff permanently. The
+runner refuses a turn that advances any row but its own.
+
+1. Write the files listed in the task details for **your task**, and no others.
 2. Run the gate yourself, in this order:
-   - `node scripts/check-scaffold.mjs --through-wave <your wave number> --quiet` — are the files of
-     your wave and every earlier wave present and non-trivial. **Pass your wave.** Without the flag the
-     check covers all eight waves and is red until the last one, and the runner reads a red gate as a
-     reason to stop;
+   - `node scripts/check-scaffold.mjs --through-row <your task id> --quiet` — are the files of your
+     task and every earlier task present and non-trivial. **Pass your task id**, e.g. `--through-row
+     S6`. Without a scope the check covers all 14 tasks and is red until the last one, and the runner
+     reads a red gate as a reason to stop. Do not reach for `--through-wave`: on a wave with more
+     than one task it demands files belonging to turns that have not happened, and building them to
+     go green is the batching the paragraph above forbids;
    - `dotnet build framework/ApiTests.sln` — warnings are errors;
    - `npm run sut -- reset` then `dotnet test framework/ApiTests.sln` — the smoke suite.
    Before wave 8 exists there are no smoke tests yet, so `dotnet test` reporting zero tests is a
-   pass, not a failure. What must be green is your wave's manifest check and `dotnet build`. The
-   runner runs the same wave-scoped gate after your turn, so a red one costs an iteration.
-3. On green, commit **once for the wave**, with a trailer naming the tasks:
+   pass, not a failure. What must be green is your task's manifest check and `dotnet build`. The
+   runner runs the same row-scoped gate after your turn, so a red one costs an iteration.
+3. On green, commit **once**, with a trailer naming the task:
 
    ```
-   feat(framework): <what this wave built>
+   feat(framework): <what this task built>
 
-   Scaffold-Tasks: S2, S3
+   Scaffold-Task: S6
    ```
 
-4. Set each task of the wave to `review` in `loop/trackers/scaffold.md`.
+4. Set **your task's row** to `review` in `loop/trackers/scaffold.md`. Only that row.
 
    **Write the bare word into the Status cell.** No backticks, no bold, no tick mark, no trailing
-   note — `| S2 | wave-2 | … | review |`, exactly that. A status cell holding `` `review` `` or
+   note — `| S6 | wave-5 | … | review |`, exactly that. A status cell holding `` `review` `` or
    `**review**` makes the whole row invisible to the tracker parser, and the loop would then believe
    that task does not exist. The runner validates the file after your turn and stops if it cannot
    read a row, so this costs you an iteration rather than passing silently.
@@ -71,8 +79,10 @@ own opinion of yourself.
 
 ## Forbidden
 
-- Building files that belong to a **later** wave. One wave per turn.
-- Committing with a red gate — that includes your wave's manifest check, not only `dotnet build`.
+- Building files that belong to **another task** — later or merely alongside yours. One task per turn.
+- Moving any tracker row but your own, in any direction. The runner checks, refuses the turn and puts
+  the other row back.
+- Committing with a red gate — that includes your task's manifest check, not only `dotnet build`.
 - `git push`. The ceiling of this loop is a commit on a local branch.
 - `git checkout`, `git switch`, any branch change. You are already on the right branch.
 - Editing anything under `docs/specs/petclinic/`. It is read-only input.
@@ -84,7 +94,7 @@ own opinion of yourself.
 
 ## If you are blocked
 
-The design does not answer a question your wave depends on:
+The design does not answer a question your task depends on:
 
 1. set the task to `blocked` in `loop/trackers/scaffold.md`;
 2. write the **question** in the Open questions section — one sentence, with a pointer to where the
@@ -100,7 +110,7 @@ The next iteration will not remember this turn. It will read `loop/JOURNAL.md` a
 from you. **Append** to the end of the file (never rewrite it):
 
 ```markdown
-### Iteration <N> — wave <W> (<task ids>)
+### Iteration <N> — wave <W> (<task id>)
 **Did:** one sentence about what is now green.
 **Tripped on:** what broke and why. Empty only if genuinely nothing.
 **For the next turn:** the warning you would want to read yourself.

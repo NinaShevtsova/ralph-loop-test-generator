@@ -6,17 +6,30 @@
 // "So far" is the whole point. Stage 0 builds in eight waves, so checking all 39 entries at every
 // gate run is red by construction from wave 1 until wave 8 — and the runner's pre-turn gate treats a
 // red HEAD as fatal. Measured: with wave 1 built, the unfiltered check reported 37 problems and exit
-// 1, which would have killed stage 0 at iteration 2. Each entry therefore carries the wave that
-// builds it, and the gate checks waves 1..N.
+// 1, which would have killed stage 0 at iteration 2.
 //
+// "So far" has TWO meanings, and conflating them is the second way this gate goes red by
+// construction. A wave is a set of rows and a turn builds ONE row (design §6.2), so:
+//
+//   --through-row S6    every file of S1..S6. What must exist when the S6 turn is done, and the
+//                       only scope a POST-turn gate can fairly demand: four of the eight waves hold
+//                       more than one row, so a wave-scoped gate on the first row of any of them
+//                       demands files from turns nobody has been asked to take. Measured on the live
+//                       run: `--through-wave 5` for S6 was red with `ResourceTracker.cs` (S7) and
+//                       `ReadinessProbe.cs` (S8) missing, while S6's own file passed every probe.
+//   --through-wave 4    every file of waves 1..4. What must ALREADY exist before a wave-5 turn
+//                       starts — while any row of wave 5 is open, wave 4 is the last complete one.
+//                       This is loop/gates.mjs's pre-turn gate, and it is correct as it stands.
+//
+//   node scripts/check-scaffold.mjs --through-row S6
 //   node scripts/check-scaffold.mjs --through-wave 3
-//   npm run check:scaffold                       (no wave: checks everything, i.e. the final state)
+//   npm run check:scaffold                       (no scope: checks everything, i.e. the final state)
 
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { repoRoot, Verdict } from './lib.mjs';
-import { SCAFFOLD_MANIFEST } from './manifest.scaffold.mjs';
+import { SCAFFOLD_MANIFEST, SCAFFOLD_ROWS, entriesThroughRow } from './manifest.scaffold.mjs';
 
 const ROOT = repoRoot(import.meta.url);
 const v = new Verdict('check:scaffold');
@@ -31,29 +44,64 @@ const v = new Verdict('check:scaffold');
 // remove this and those two entries stop checking anything at all.
 const MIN_BYTES = 40;
 
-// Which waves should be complete by now. The runner passes the wave of the row it is working on;
-// without the flag the gate checks the finished framework, which is what `npm run check:scaffold`
-// means on its own.
+// How much of the manifest should be complete by now. Without a scope the gate checks the finished
+// framework, which is what `npm run check:scaffold` means on its own.
+const rowAt = process.argv.indexOf('--through-row');
 const waveAt = process.argv.indexOf('--through-wave');
-const throughWave = waveAt === -1 ? Infinity : Number(process.argv[waveAt + 1]);
 
-if (waveAt !== -1 && (!Number.isInteger(throughWave) || throughWave < 1)) {
-  console.error(`check:scaffold: --through-wave ${process.argv[waveAt + 1]} — must be a positive integer`);
+// Refused rather than resolved by precedence. The two flags answer different questions and a caller
+// that passes both has one of them wrong; silently honouring the other would run the gate at a scope
+// nobody asked for, and the header line would then be the only evidence — in a log the runner only
+// reads when the gate is already red.
+if (rowAt !== -1 && waveAt !== -1) {
+  console.error(
+    'check:scaffold: --through-row and --through-wave are two different scopes — pass one.\n' +
+      '  --through-row  S6   the rows up to and including S6 (a turn builds one row)\n' +
+      '  --through-wave 4    the waves up to and including 4 (what is complete before a turn starts)'
+  );
   process.exit(2);
 }
 
-const inScope = SCAFFOLD_MANIFEST.filter((entry) => entry.wave <= throughWave);
+let inScope;
+let scope;
 
-if (inScope.length === 0) {
-  console.error(`check:scaffold: no manifest entry belongs to wave ${throughWave} or earlier`);
-  process.exit(2);
+if (rowAt !== -1) {
+  const throughRow = process.argv[rowAt + 1];
+  inScope = entriesThroughRow(throughRow);
+
+  // Never falls through to "check everything": a typo would then run the FINAL-state gate, which is
+  // red until the last row of stage 0 and would be read as a verdict on the turn.
+  if (inScope === null) {
+    console.error(
+      `check:scaffold: --through-row ${throughRow ?? '(missing)'} — no such row; ` +
+        `the manifest knows ${SCAFFOLD_ROWS.join(', ')}`
+    );
+    process.exit(2);
+  }
+
+  scope = `${inScope.length} entries from rows ${SCAFFOLD_ROWS[0]}..${throughRow}`;
+} else {
+  const throughWave = waveAt === -1 ? Infinity : Number(process.argv[waveAt + 1]);
+
+  if (waveAt !== -1 && (!Number.isInteger(throughWave) || throughWave < 1)) {
+    console.error(`check:scaffold: --through-wave ${process.argv[waveAt + 1]} — must be a positive integer`);
+    process.exit(2);
+  }
+
+  inScope = SCAFFOLD_MANIFEST.filter((entry) => entry.wave <= throughWave);
+
+  if (inScope.length === 0) {
+    console.error(`check:scaffold: no manifest entry belongs to wave ${throughWave} or earlier`);
+    process.exit(2);
+  }
+
+  scope =
+    throughWave === Infinity
+      ? `all ${inScope.length} manifest entries`
+      : `${inScope.length} entries from waves 1..${throughWave}`;
 }
 
-console.log(
-  throughWave === Infinity
-    ? `check:scaffold: all ${inScope.length} manifest entries`
-    : `check:scaffold: ${inScope.length} entries from waves 1..${throughWave}`
-);
+console.log(`check:scaffold: ${scope}`);
 
 for (const entry of inScope) {
   const absolute = join(ROOT, entry.path);

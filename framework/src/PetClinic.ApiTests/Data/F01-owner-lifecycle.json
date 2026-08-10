@@ -1,0 +1,22 @@
+{
+  "AC-F01-01": {
+    "owner": { "firstName": "Anna", "lastName": "Petliura",
+               "address": "12 Shevchenka Street", "city": "Lviv", "telephone": "0501234567" }
+  },
+  "AC-F01-02": {
+    "owner": { "firstName": "Oksana", "lastName": "Kravchenko",
+               "address": "45 Sadova Street", "city": "Kharkiv", "telephone": "0671112233" },
+    "ownerUpdate": { "city": "Poltava" }
+  },
+  "AC-F01-03": {
+    "owner": { "firstName": "Mykola", "lastName": "Boyko",
+               "address": "8 Franka Street", "city": "Ternopil", "telephone": "0509876543" }
+  },
+  "AC-F01-04": {
+    "petType": { "name": "Hamster" },
+    "owner": { "firstName": "Ihor", "lastName": "Savchenko",
+               "address": "3 Hrushevskoho Street", "city": "Rivne", "telephone": "0632223344" },
+    "pet": { "name": "Pet", "birthDate": "2020-05-14" },
+    "visit": { "description": "Rabies shot qwerty", "date": "2026-07-01" }
+  }
+}

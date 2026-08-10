@@ -1,0 +1,58 @@
+{
+  "AC-F02-01": {
+    "owner": { "firstName": "Bohdan", "lastName": "Tkachenko",
+               "address": "27 Lesi Ukrainky Street", "city": "Odesa", "telephone": "0687654321" },
+    "pet": { "name": "Pet", "birthDate": "2020-05-14" }
+  },
+  "AC-F02-02": {
+    "owner": { "firstName": "Kateryna", "lastName": "Moroz",
+               "address": "9 Soborna Street", "city": "Poltava", "telephone": "0631234567" },
+    "pet": { "name": "Pet", "birthDate": "2019-03-22" }
+  },
+  "AC-F02-03": {
+    "owner": { "firstName": "Yuriy", "lastName": "Boyko",
+               "address": "15 Hrushevskoho Street", "city": "Chernihiv", "telephone": "0509876543" },
+    "pet": { "name": "Pet", "birthDate": "2021-07-10" }
+  },
+  "AC-F02-04": {
+    "owner": { "firstName": "Olena", "lastName": "Savchenko",
+               "address": "3 Soborna Square", "city": "Vinnytsia", "telephone": "0673456789" },
+    "pet": { "name": "Pet", "birthDate": "2018-11-02" }
+  },
+  "AC-F02-05": {
+    "owner": { "firstName": "Mykola", "lastName": "Hrytsenko",
+               "address": "8 Nezalezhnosti Avenue", "city": "Zhytomyr", "telephone": "0664561230" },
+    "pet": { "name": "Pet", "birthDate": "2019-09-01" },
+    "visit": { "description": "Rabies shot", "date": "2025-11-20" }
+  },
+  "AC-F02-06": {
+    "owner": { "firstName": "Ihor", "lastName": "Kravchenko",
+               "address": "21 Frankivska Street", "city": "Ivano-Frankivsk", "telephone": "0509998877" },
+    "pet": { "name": "Pet", "birthDate": "2020-01-15" },
+    "pet2": { "name": "Buddy", "birthDate": "2021-04-05" }
+  },
+  "AC-F02-07": {
+    "owner": { "firstName": "Solomiya", "lastName": "Vasylenko",
+               "address": "6 Symonenka Street", "city": "Rivne", "telephone": "0687712345" },
+    "pet": { "name": "Pet", "birthDate": "2020-08-19" }
+  },
+  "AC-F02-08": {
+    "owner": { "firstName": "Andriy", "lastName": "Poliakov",
+               "address": "11 Sadova Street", "city": "Sumy", "telephone": "0509123456" },
+    "owner2": { "firstName": "Nadiya", "lastName": "Shevchenko",
+                "address": "4 Zamkova Street", "city": "Ternopil", "telephone": "0637894561" },
+    "pet": { "name": "Pet", "birthDate": "2019-06-30" }
+  },
+  "AC-F02-09": {
+    "owner": { "firstName": "Taras", "lastName": "Melnychenko",
+               "address": "5 Instytutska Street", "city": "Cherkasy", "telephone": "0687651234" },
+    "pet": { "name": "Ghost", "birthDate": "2020-02-02" }
+  },
+  "AC-F02-10": {
+    "petType": { "name": "Ferret" },
+    "owner": { "firstName": "Vitaliy", "lastName": "Kovalenko",
+               "address": "17 Zamkova Street", "city": "Lutsk", "telephone": "0687712398" },
+    "pet": { "name": "Pet", "birthDate": "2020-05-14" },
+    "visit": { "description": "Annual checkup", "date": "2025-12-01" }
+  }
+}

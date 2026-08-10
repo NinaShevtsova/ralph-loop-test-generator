@@ -45,8 +45,8 @@ export function targetSection({
       `**Task:** \`${row.id}\` — ${row.title}`,
       `**Status:** \`${row.status}\``,
       '',
-      `Build **every task of \`${row.group}\`** — read its details section in`,
-      '`loop/trackers/scaffold.md` for the exact file list and DoD.',
+      `Build **only \`${row.id}\`** — read its details section in \`loop/trackers/scaffold.md\` for the`,
+      'exact file list and DoD. Other rows of this wave are other turns; leave their statuses alone.',
       ''
     );
   } else {

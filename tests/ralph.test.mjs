@@ -36,6 +36,7 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 
 import { repoRoot } from '../scripts/lib.mjs';
+import { parseRows, setStatus } from '../loop/tracker.mjs';
 
 const ROOT = repoRoot(import.meta.url);
 const WIN = process.platform === 'win32';
@@ -72,7 +73,21 @@ function buildClone(prefix) {
   );
   cpSync(join(ROOT, 'package.json'), join(dir, 'package.json'));
 
-  // Runtime state the clone must not inherit.
+  // Runtime state the clone must not inherit — including the trackers.
+  //
+  // `loop/` is copied from a repository that may be MID-RUN. Measured: with five `done` rows in
+  // `loop/trackers/scaffold.md`, `pickTarget` in the clone returned S6 rather than S1, so a fixture
+  // that seeds wave 1 was gated against wave 4 and the stage-0 test below asserted a status on a row
+  // the runner never targeted. A harness test must measure the runner, not how far the real run has
+  // got, so every row starts where a fresh run starts. Through `setStatus`, not a regex over the file:
+  // the details sections and the Open questions section below the table hold status-shaped prose.
+  for (const relative of ['loop/trackers/scaffold.md', 'loop/trackers/tests.md']) {
+    const path = join(dir, relative);
+    let markdown = readFileSync(path, 'utf8');
+    for (const row of parseRows(markdown)) markdown = setStatus(markdown, row.id, 'todo');
+    writeFileSync(path, markdown);
+  }
+
   rmSync(join(dir, 'loop/JOURNAL.md'), { force: true });
   rmSync(join(dir, 'loop/STEPS.md'), { force: true });
   rmSync(join(dir, 'loop/verdicts'), { recursive: true, force: true });
@@ -185,6 +200,42 @@ const t = 'loop/trackers/tests.md';
 writeFileSync(t, readFileSync(t, 'utf8')
   .replace(new RegExp('(\\\\| ' + AC + ' \\\\|[^\\\\n]*\\\\| )todo( \\\\|)'), '$1review$2'));
 `;
+
+/**
+ * AGENT_GOOD, plus one line: a row this turn was never given, flipped to the one word both prompts
+ * forbid. Everything else about the turn is legal, so the gate is green and the work is committed —
+ * this is the turn that used to be ACCEPTED, and `a one-commit turn inside the fence still passes`
+ * above is the control that proves the difference is the tracker line and nothing else.
+ *
+ * Written and not committed, exactly as an honest turn leaves the tracker: committing it would trip
+ * the stage-1 diff fence instead, and then the test would be measuring the fence.
+ */
+const AGENT_TAMPERS = `${AGENT_GOOD}
+writeFileSync(t, readFileSync(t, 'utf8')
+  .replace(/(\\| AC-F01-03 \\|[^\\n]*\\| )todo( \\|)/, '$1done$2'));
+`;
+
+/** `replace`, where a pattern that fails to match is a broken fixture rather than a silent no-op. */
+const mustReplace = (text, from, to) => {
+  assert.ok(text.includes(from), `the fixture expected to find ${JSON.stringify(from)} in the stub agent`);
+  return text.split(from).join(to);
+};
+
+/**
+ * AGENT_GOOD finishing a row that is in `rework` rather than `todo` — the second attempt, which is
+ * the normal shape of every turn after a refusal. `PROMPT.tests.md` still ends it at `review`.
+ *
+ * `git add framework`, not `git add -A`, and that is a measured difference rather than tidiness. By
+ * the time a rework turn runs, the RUNNER has written `rework` into `loop/trackers/tests.md` and never
+ * committed it — `ralph.mjs` contains no `git commit`. An `add -A` sweeps that into the turn's commit,
+ * and `check-tests.mjs`'s diff half is repo-wide, so the gate then fails with "a stage-1 turn must not
+ * touch loop/trackers/tests.md" — a file no agent touched. Measured here before this line existed.
+ */
+const AGENT_GOOD_FROM_REWORK = mustReplace(
+  mustReplace(AGENT_GOOD, "git('add', '-A');", "git('add', 'framework');"),
+  ')todo( ',
+  ')rework( '
+);
 
 /** A stub agent that commits nothing but its own tracker row. */
 const agentTrackerOnly = (tracker) => `
@@ -359,35 +410,190 @@ test('a turn whose only commit is its own tracker row is refused before the judg
   rmSync(dir, { recursive: true, force: true });
 });
 
-/** The five wave-1 files `check-scaffold.mjs` asks for, so a stage-0 gate can be green. */
-function seedScaffoldWave1(dir) {
-  const write = (rel, text) => {
-    mkdirSync(dirname(join(dir, rel)), { recursive: true });
-    writeFileSync(join(dir, rel), text);
-  };
-  write('framework/ApiTests.sln', 'Microsoft Visual Studio Solution File, Format Version 12.00\nProject "PetClinic.ApiTests"\n');
-  write(
-    'framework/Directory.Build.props',
+/** The wave-1 and wave-2 files `check-scaffold.mjs`'s manifest asks for, so a stage-0 gate is green. */
+const SCAFFOLD_WAVE_1 = {
+  'framework/ApiTests.sln':
+    'Microsoft Visual Studio Solution File, Format Version 12.00\nProject "PetClinic.ApiTests"\n',
+  'framework/Directory.Build.props':
     '<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework>\n' +
-      '<TreatWarningsAsErrors>true</TreatWarningsAsErrors><Nullable>enable</Nullable>\n' +
-      '</PropertyGroup></Project>\n'
-  );
-  write('framework/reqnroll.json', '{ "language": { "feature": "en" }, "bindingCulture": { "name": "en-US" } }\n');
-  write(
-    `${PROJECT}/PetClinic.ApiTests.csproj`,
+    '<TreatWarningsAsErrors>true</TreatWarningsAsErrors><Nullable>enable</Nullable>\n' +
+    '</PropertyGroup></Project>\n',
+  'framework/reqnroll.json':
+    '{ "language": { "feature": "en" }, "bindingCulture": { "name": "en-US" } }\n',
+  [`${PROJECT}/PetClinic.ApiTests.csproj`]:
     '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>\n' +
-      '<ItemGroup><PackageReference Include="RestSharp" Version="112.0.0" />\n' +
-      '<PackageReference Include="Reqnroll.NUnit" Version="2.0.0" />\n' +
-      '<PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />\n' +
-      '<PackageReference Include="FluentAssertions" Version="[7.0.0]" /></ItemGroup></Project>\n'
-  );
-  write(
-    `${PROJECT}/appsettings.json`,
-    '{ "baseUrl": "http://localhost:9966/petclinic/api", "readiness": { "timeoutMs": 90000 } }\n'
-  );
+    '<ItemGroup><PackageReference Include="RestSharp" Version="112.0.0" />\n' +
+    '<PackageReference Include="Reqnroll.NUnit" Version="2.0.0" />\n' +
+    '<PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />\n' +
+    '<PackageReference Include="FluentAssertions" Version="[7.0.0]" /></ItemGroup></Project>\n',
+  [`${PROJECT}/appsettings.json`]:
+    '{ "baseUrl": "http://localhost:9966/petclinic/api", "readiness": { "timeoutMs": 90000 } }\n',
+};
+
+const SCAFFOLD_WAVE_2 = {
+  [`${PROJECT}/Config/TestSettings.cs`]:
+    'namespace PetClinic.ApiTests.Config;\n\npublic sealed class TestSettings\n{\n' +
+    '    public string BaseUrl { get; init; } = string.Empty;\n}\n',
+  [`${PROJECT}/Config/SettingsLoader.cs`]:
+    'namespace PetClinic.ApiTests.Config;\n\npublic static class SettingsLoader\n{\n' +
+    '    // reads appsettings.json, then the PETCLINIC_BASE_URL override\n}\n',
+  [`${PROJECT}/Models/Owner.cs`]:
+    'namespace PetClinic.ApiTests.Models;\n\npublic sealed class Owner\n{\n' +
+    '    public string? FirstName { get; set; }\n    public string? LastName { get; set; }\n' +
+    '    public string? Telephone { get; set; }\n    public List<Pet> Pets { get; set; } = new();\n}\n',
+  [`${PROJECT}/Models/Pet.cs`]:
+    'namespace PetClinic.ApiTests.Models;\n\npublic sealed class Pet\n{\n' +
+    '    public string? BirthDate { get; set; }\n    public int OwnerId { get; set; }\n' +
+    '    public List<Visit> Visits { get; set; } = new();\n}\n',
+  [`${PROJECT}/Models/PetType.cs`]:
+    'namespace PetClinic.ApiTests.Models;\n\npublic sealed class PetType\n{\n' +
+    '    public string? Name { get; set; }\n}\n',
+  [`${PROJECT}/Models/Visit.cs`]:
+    'namespace PetClinic.ApiTests.Models;\n\npublic sealed class Visit\n{\n' +
+    '    public string? Description { get; set; }\n    public int PetId { get; set; }\n}\n',
+};
+
+/** Wave 1 already built and committed, for a test whose subject is a LATER turn. */
+function seedScaffoldWave1(dir) {
+  for (const [relative, text] of Object.entries(SCAFFOLD_WAVE_1)) {
+    mkdirSync(dirname(join(dir, relative)), { recursive: true });
+    writeFileSync(join(dir, relative), text);
+  }
   git(dir, 'add', '-A');
   git(dir, 'commit', '-m', 'scaffold: wave 1');
 }
+
+// ── The tracker is the agent's to write, but only its own row and only in one direction ──
+//
+// The agent writes its own row and the RUNNER writes `done` on a judge PASS. Nothing deterministic
+// looked at the rest of the file: `check-scaffold.mjs` grades a file manifest and has no tracker check
+// at all, the left-behind probe watches only `framework/`, and `validateTable` checks the table's STRUCTURE
+// rather than the TRUTH of its statuses. A turn that flipped an unrelated row to `done` therefore
+// passed every gate, and `pickTarget` skips a `done` row — the stage reports complete with a task
+// never built. Design §6: a wrong rejection costs one iteration, a wrong acceptance ships a lie.
+
+test('a turn that flips a row it was never given to `done` is refused, named, and put back', { skip: !WIN }, () => {
+  const { dir, control } = buildClone('ralph-tamper-');
+  writeFileSync(join(control, 'agent.mjs'), AGENT_TAMPERS);
+
+  const run = runRalph(dir, { env: { MAX_ITER: '1' }, args: ['--stage', 'tests', '--flow', 'F-01'] });
+
+  // Green gate, work committed, nothing left behind — the turn is refused for the tracker line alone.
+  assert.doesNotMatch(run.out, /gate red/, run.out.slice(-3000));
+  assert.match(run.out, /rewrote tracker rows an agent may not write/, run.out.slice(-3000));
+  assert.match(run.out, /AC-F01-03: `todo` -> `done`/, 'the row AND the transition must be named');
+  assert.doesNotMatch(run.out, /calling the judge/, 'a turn that rewrote the tracker must not be judged');
+
+  const tracker = readFileSync(join(dir, 'loop/trackers/tests.md'), 'utf8');
+  assert.match(tracker, /\| AC-F01-03 \|.*\| todo \|/, 'the forged row must be put back, or the loop still skips it');
+  assert.match(tracker, /\| AC-F01-01 \|.*\| rework \|/, 'the target row goes to rework, as after any refusal');
+
+  // `previousFindings` reads this file for any `rework` row, so it is what the next prompt carries.
+  const note = readIf(join(dir, 'loop/verdicts/AC-F01-01.md'));
+  assert.match(note, /AC-F01-03/, 'the next turn must be told which row to leave alone');
+  assert.match(note, /may not write/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('a turn that finishes a `rework` row at `review` is accepted, not read as rewriting a judged row', { skip: !WIN }, () => {
+  // The correction to "a judged row is history". A `rework` row is exactly the row the agent is sent
+  // BACK into — pickTarget returns it with phase `agent` and the prompt ends that turn at `review`.
+  // A rule that forbade every write to a `rework` row would refuse the second attempt at every row,
+  // and three refusals trip K_FAILURES: the loop could not rework anything at all.
+  const { dir, control } = buildClone('ralph-rework-');
+  writeFileSync(join(control, 'agent.1.mjs'), "process.stdout.write('turn 1 did nothing\\n');\n");
+  writeFileSync(join(control, 'agent.2.mjs'), AGENT_GOOD_FROM_REWORK);
+
+  const run = runRalph(dir, { env: { MAX_ITER: '2' }, args: ['--stage', 'tests', '--flow', 'F-01'] });
+
+  // Turn 2 really did start from `rework` — otherwise this test would pass while exercising nothing.
+  assert.match(readIf(join(control, 'agent.2.prompt.txt')), /\*\*Status:\*\* `rework`/, 'turn 2 must be a rework turn');
+  assert.doesNotMatch(run.out, /rewrote tracker rows/, 'rework -> review is the prompt\'s own contract');
+  assert.match(run.out, /verdict PASS for AC-F01-01/, run.out.slice(-3000));
+  assert.match(readFileSync(join(dir, 'loop/trackers/tests.md'), 'utf8'), /\| AC-F01-01 \|.*\| done \|/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+/**
+ * A stub stage-0 agent: writes the files it is given, sets EVERY row of its wave to `review` — which
+ * is what `PROMPT.scaffold.md` step 4 asks for — and commits the whole tree with `git add -A`.
+ *
+ * The `git add -A` is the point of the fixture, not a shortcut. The runner writes `done` into the
+ * tracker at the end of an iteration and never commits it (`ralph.mjs` contains no `git commit`), so
+ * the next turn finds that word already in the file and sweeps it into its own commit. Measured in the
+ * real run: the wave-4 turn did exactly this with the runner's `done` for S4.
+ */
+const scaffoldAgent = (files, ids) => `
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { spawnSync } from 'node:child_process';
+
+for (const [path, text] of Object.entries(${JSON.stringify(files)})) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, text);
+}
+
+const t = 'loop/trackers/scaffold.md';
+let md = readFileSync(t, 'utf8');
+for (const id of ${JSON.stringify(ids)}) {
+  md = md.replace(new RegExp('(\\\\| ' + id + ' \\\\|[^\\\\n]*\\\\| )todo( \\\\|)'), '$1review$2');
+}
+writeFileSync(t, md);
+
+spawnSync('git', ['add', '-A'], { encoding: 'utf8' });
+spawnSync('git', ['commit', '-m', 'feat(framework): ${ids.join(', ')}'], { encoding: 'utf8' });
+`;
+
+test('a turn that advances a row other than its target is refused, and the passenger is put back', { skip: !WIN }, () => {
+  // This test asserted the opposite until a real run deadlocked on it.
+  //
+  // A turn delivered S6, S7 and S8 in one commit and set all three to `review`. The judge was asked
+  // about S6, saw a diff spanning all three files, and reported real defects in S7's and S8's. The
+  // agent's rework then touched only those files — so the next diff contained no `UniqueData.cs` at
+  // all, and the judge said: "there is nothing in this diff by which S6 can be judged, and a row moved
+  // to review by a commit that does not touch its files is not reviewable." Every further rework moved
+  // the diff further from the target's work. S6 could never be judged again.
+  //
+  // The judge grades a DIFF, and a diff spanning several rows cannot be attributed to one of them.
+  // One row per turn is what design §6.2 always said.
+  const { dir, control } = buildClone('ralph-batch-');
+  writeFileSync(join(control, 'agent.1.mjs'), scaffoldAgent(SCAFFOLD_WAVE_1, ['S1']));
+  writeFileSync(join(control, 'agent.2.mjs'), scaffoldAgent(SCAFFOLD_WAVE_2, ['S2', 'S3']));
+
+  const run = runRalph(dir, { env: { MAX_ITER: '2' }, args: ['--stage', 'scaffold'] });
+
+  assert.match(run.out, /rewrote tracker rows/, run.out.slice(-4000));
+  assert.match(run.out, /S3/, 'the refusal must name the passenger');
+
+  const tracker = readFileSync(join(dir, 'loop/trackers/scaffold.md'), 'utf8');
+  assert.match(tracker, /\| S1 \|.*\| done \|/, 'the first turn was legitimate and stands');
+  assert.match(tracker, /\| S2 \|.*\| rework \|/, 'the target of the refused turn goes to rework');
+  assert.match(tracker, /\| S3 \|.*\| todo \|/, 'the passenger must be put back, not left in review');
+
+  // The judge is not paid for a turn the runner has already refused.
+  assert.equal(readIf(join(control, 'judge.count')).trim(), '1');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("sweeping the runner's own `done` into a turn's commit is still not tampering", { skip: !WIN }, () => {
+  // The other half, and the one that must not break. The runner writes `done` at the end of an
+  // iteration and never commits it, so the next turn finds that word already in the file and
+  // `git add -A` folds it in. Measured in the real run: commit 9b56ba5 carries `S4 todo -> done`,
+  // written by the runner after a judge PASS, beside the agent's own `S5 todo -> review`.
+  const { dir, control } = buildClone('ralph-sweep-');
+  writeFileSync(join(control, 'agent.1.mjs'), scaffoldAgent(SCAFFOLD_WAVE_1, ['S1']));
+  writeFileSync(join(control, 'agent.2.mjs'), scaffoldAgent(SCAFFOLD_WAVE_2, ['S2']));
+
+  const run = runRalph(dir, { env: { MAX_ITER: '2' }, args: ['--stage', 'scaffold'] });
+
+  assert.doesNotMatch(run.out, /rewrote tracker rows/, run.out.slice(-4000));
+  assert.doesNotMatch(run.out, /gate red/, run.out.slice(-4000));
+
+  const committed = git(dir, 'show', 'HEAD:loop/trackers/scaffold.md');
+  assert.match(committed, /\| S1 \|.*\| done \|/, "the turn must have committed the runner's own done");
+  assert.match(committed, /\| S2 \|.*\| review \|/);
+  rmSync(dir, { recursive: true, force: true });
+});
 
 // ── SPEC_UNCLEAR reaches the human ───────────────────────────────────────────────────
 

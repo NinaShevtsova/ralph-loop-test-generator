@@ -15,6 +15,7 @@
     "check:tests": "node scripts/check-tests.mjs",
     "steps": "node scripts/steps-inventory.mjs",
     "api:build": "dotnet build framework/ApiTests.sln",
-    "api:test": "dotnet test framework/ApiTests.sln"
+    "api:test": "dotnet test framework/ApiTests.sln",
+    "reset": "node scripts/reset-run.mjs"
   }
 }

@@ -232,3 +232,83 @@ export function setStatus(markdown, id, status) {
 export function firstDone(markdown) {
   return parseRows(markdown).find((row) => row.status === 'done') ?? null;
 }
+
+/**
+ * What an agent turn may write into a Status cell, keyed by the status the row held BEFORE the turn.
+ *
+ * This is the contract both prompts already state — `review` is "the normal end of a turn", `blocked`
+ * ends it without a commit, and "**You may never write `done`**" — and nothing deterministic enforced
+ * it. The agent writes its own row and the RUNNER writes `done` on a judge PASS, but nothing checked
+ * what ELSE the agent wrote. A turn that flipped an unrelated row to `done` passed every gate:
+ * `check-scaffold.mjs` grades a file manifest, the left-behind probe watches only `framework/`, and
+ * `validateTable` inspects the table's structure rather than the truth of its statuses. `pickTarget`
+ * then skips that row for the rest of the run and the stage reports complete with a task never built.
+ * Design §6: a wrong rejection costs one iteration, a wrong acceptance ships a lie.
+ *
+ * `rework` is a SOURCE as well as a dead end, and that is the correction to the obvious reading of
+ * "a judged row is history". A `rework` row is precisely the row the agent is sent back into —
+ * `pickTarget` returns it with phase `agent`, and the prompt tells that turn to finish at `review`.
+ * Forbidding `rework -> review` would refuse every second attempt at every row, and three refusals
+ * trip `K_FAILURES`: the loop could not rework anything at all.
+ *
+ * The three dead ends are dead for different reasons. `done` is the runner's word, written only on an
+ * independent PASS. `review` belongs to a row whose judge call has not happened yet, so moving it
+ * hides finished work from the judge. `blocked` holds a question a human is being asked, and
+ * answering one's own question is the thing escalation exists to prevent.
+ */
+const AGENT_MAY_WRITE = {
+  todo: ['review', 'blocked'],
+  rework: ['review', 'blocked'],
+  review: [],
+  blocked: [],
+  done: [],
+};
+
+/**
+ * Every status the agent changed across its turn that it had no right to change.
+ *
+ * Two readings of the SAME file, before and after, parsed the way the runner parses it — so a row the
+ * RUNNER set to `done` at the end of the previous iteration is already `done` in the `before` snapshot
+ * and committing that file is not a change. Measured in the real run: the wave-4 turn found the
+ * runner's uncommitted `done` for S4 and folded it into its own commit. That must stay legal.
+ *
+ * `targetId` is the ONLY row a turn may advance, and batching is refused. An earlier version allowed
+ * any `todo -> review`, on the evidence that a turn which delivered S2 and S3 together was handled
+ * correctly and cheaply. That was luck, and the next batch deadlocked: a turn delivered S6, S7 and S8
+ * in one commit, the judge was asked about S6 and reported real defects in S7's and S8's files, the
+ * agent's rework touched only those files — and the diff no longer contained `UniqueData.cs` at all.
+ * The judge said so in as many words: "there is nothing in this diff by which S6 can be judged, and a
+ * row moved to review by a commit that does not touch its files is not reviewable." Every further
+ * rework moves the diff further from the target's work, so the row can never be judged again.
+ *
+ * One row per turn is what design §6.2 always said. It is not a style preference: the judge grades a
+ * diff, and a diff that spans several rows cannot be attributed to one of them.
+ *
+ * Returns `{ id, from, to }` records, so the caller can name the transition AND put it back:
+ * `from: null` for a row the turn added, `to: null` for one it removed. Those two are mostly caught
+ * already by `validateTable`'s `**Total:**` cross-check — but only while the declared total is left
+ * alone, and a deleted row is a task nobody ever builds.
+ */
+export function forbiddenStatusWrites(before, after, targetId) {
+  const was = new Map(parseRows(before).map((row) => [row.id, row.status]));
+  const seen = new Set();
+  const writes = [];
+
+  for (const row of parseRows(after)) {
+    seen.add(row.id);
+    const from = was.get(row.id);
+    if (from === undefined) {
+      writes.push({ id: row.id, from: null, to: row.status });
+    } else if (from !== row.status) {
+      // A row that is not this turn's target may not move at all, whatever the transition.
+      const allowed = row.id === targetId ? AGENT_MAY_WRITE[from] : [];
+      if (!allowed.includes(row.status)) writes.push({ id: row.id, from, to: row.status });
+    }
+  }
+
+  for (const [id, from] of was) {
+    if (!seen.has(id)) writes.push({ id, from, to: null });
+  }
+
+  return writes;
+}

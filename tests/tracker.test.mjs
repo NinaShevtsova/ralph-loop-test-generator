@@ -9,6 +9,7 @@ import {
   setStatus,
   firstDone,
   validateTable,
+  forbiddenStatusWrites,
   STATUSES,
 } from '../loop/tracker.mjs';
 
@@ -335,4 +336,147 @@ test('pickTarget throws rather than reporting success when nothing parsed', () =
 
 test('pickTarget throws for a group with no rows instead of reporting it complete', () => {
   assert.throws(() => pickTarget(TRACKER, 'F-09'), /no tracker rows in group F-09/);
+});
+
+// ── forbiddenStatusWrites ─────────────────────────────────────────────────────
+//
+// The agent writes its own row and the runner writes `done` on a judge verdict. Nothing deterministic
+// checked what ELSE the agent wrote: check-scaffold.mjs has no tracker check, the runner's left-behind
+// probe watches only `framework/`, and validateTable inspects the table's structure rather than the
+// truth of its statuses. A turn that flipped an unrelated row to `done` passed every gate, and
+// pickTarget skips a `done` row — the stage then reports complete with a task never built.
+
+test('forbiddenStatusWrites reports nothing when the turn left the tracker alone', () => {
+  assert.deepEqual(forbiddenStatusWrites(TRACKER, TRACKER, 'AC-F02-01'), []);
+});
+
+test('forbiddenStatusWrites allows the two endings the prompts offer a turn', () => {
+  // `review` — "you finished and your gate was green"; `blocked` — "a question you have no right to
+  // answer alone". Those are the only two words either prompt gives the agent.
+  for (const ending of ['review', 'blocked']) {
+    assert.deepEqual(forbiddenStatusWrites(TRACKER, setStatus(TRACKER, 'AC-F02-01', ending), 'AC-F02-01'), []);
+  }
+});
+
+test('forbiddenStatusWrites allows a rework row to finish at review, or the loop could not rework anything', () => {
+  // The correction to the obvious reading of "a judged row carries a verdict, so leave it alone". A
+  // `rework` row is exactly the row the agent is sent BACK into: pickTarget returns it with phase
+  // `agent` and the prompt tells that turn to end at `review`. Forbidding this would refuse every
+  // second attempt at every row, and three refusals trip K_FAILURES. Measured: with `rework: []` in
+  // AGENT_MAY_WRITE this test goes red, and so does the runner's own rework turn in ralph.test.mjs.
+  assert.equal(parseRows(TRACKER).find((row) => row.id === 'AC-F01-02').status, 'rework');
+  for (const ending of ['review', 'blocked']) {
+    assert.deepEqual(forbiddenStatusWrites(TRACKER, setStatus(TRACKER, 'AC-F01-02', ending), 'AC-F01-02'), []);
+  }
+});
+
+test('forbiddenStatusWrites refuses a turn that advanced a row other than its target', () => {
+  // This test used to assert the opposite, on the evidence of a run where a turn delivered S2 and S3
+  // together and both were accepted. That was luck. The next batch deadlocked: a turn delivered S6, S7
+  // and S8 in one commit, the judge was asked about S6 and reported real defects in S7's and S8's
+  // FILES, the agent's rework touched only those files — and the diff then contained no `UniqueData.cs`
+  // at all. The judge's own words: "there is nothing in this diff by which S6 can be judged, and a row
+  // moved to review by a commit that does not touch its files is not reviewable." Each further rework
+  // moves the diff further from the target's work, so the row can never be judged again.
+  //
+  // The judge grades a DIFF. A diff spanning several rows cannot be attributed to one of them, which
+  // is why design §6.2 says one row per turn and why this is a refusal rather than a preference.
+  const batched = setStatus(setStatus(TRACKER, 'AC-F02-01', 'review'), 'AC-F02-02', 'review');
+  assert.deepEqual(forbiddenStatusWrites(TRACKER, batched, 'AC-F02-01'), [
+    { id: 'AC-F02-02', from: 'todo', to: 'review' },
+  ]);
+  // The target's own advance is still fine — only the passenger is refused.
+  assert.deepEqual(
+    forbiddenStatusWrites(TRACKER, setStatus(TRACKER, 'AC-F02-01', 'review'), 'AC-F02-01'),
+    []
+  );
+});
+
+test('forbiddenStatusWrites treats a row the RUNNER set to done as unchanged, not as tampering', () => {
+  // The exact case observed in the run. The runner writes `done` at the end of an iteration and never
+  // commits it, so the next turn finds that word already in the file and `git add -A` folds it into the
+  // turn's own commit. The snapshot is read from the same file, after the runner wrote it, so `done`
+  // is on BOTH sides and there is nothing to object to. A check that compared against the committed
+  // tracker instead would refuse every second iteration of every run.
+  const beside = setStatus(TRACKER, 'AC-F02-01', 'review');
+  assert.equal(parseRows(TRACKER).find((row) => row.id === 'AC-F01-01').status, 'done');
+  assert.deepEqual(forbiddenStatusWrites(TRACKER, beside, 'AC-F02-01'), []);
+});
+
+test('forbiddenStatusWrites refuses an agent-written done, and names the row and the transition', () => {
+  // The accept-direction hole itself: `done` on a row nobody judged. pickTarget then skips it for the
+  // rest of the run.
+  assert.deepEqual(forbiddenStatusWrites(TRACKER, setStatus(TRACKER, 'AC-F02-02', 'done'), 'AC-F02-02'), [
+    { id: 'AC-F02-02', from: 'todo', to: 'done' },
+  ]);
+  // From `rework` too — a row the judge has already rejected is not the turn's to accept.
+  assert.deepEqual(forbiddenStatusWrites(TRACKER, setStatus(TRACKER, 'AC-F01-02', 'done'), 'AC-F01-02'), [
+    { id: 'AC-F01-02', from: 'rework', to: 'done' },
+  ]);
+});
+
+test('forbiddenStatusWrites refuses any rewrite of a row that already carries a verdict', () => {
+  // `done` is the runner's word on an independent PASS; `blocked` holds a question a human is being
+  // asked. Rewriting either rewrites history — including "helpfully" reopening them.
+  for (const [id, from] of [['AC-F01-01', 'done']]) {
+    for (const to of STATUSES.filter((status) => status !== from)) {
+      assert.deepEqual(forbiddenStatusWrites(TRACKER, setStatus(TRACKER, id, to), id), [{ id, from, to }]);
+    }
+  }
+
+  const blocked = setStatus(TRACKER, 'AC-F02-02', 'blocked');
+  for (const to of STATUSES.filter((status) => status !== 'blocked')) {
+    assert.deepEqual(forbiddenStatusWrites(blocked, setStatus(blocked, 'AC-F02-02', to), 'AC-F02-02'), [
+      { id: 'AC-F02-02', from: 'blocked', to },
+    ]);
+  }
+});
+
+test('forbiddenStatusWrites refuses a rewrite of a row already waiting for the judge', () => {
+  // A `review` row is one whose agent finished and whose judge has not run. Moving it back to `todo`
+  // would hide finished work from the judge; moving it to `done` would grade it without one.
+  const waiting = setStatus(TRACKER, 'AC-F02-01', 'review');
+  assert.deepEqual(forbiddenStatusWrites(waiting, setStatus(waiting, 'AC-F02-01', 'todo'), 'AC-F02-01'), [
+    { id: 'AC-F02-01', from: 'review', to: 'todo' },
+  ]);
+  assert.deepEqual(forbiddenStatusWrites(waiting, setStatus(waiting, 'AC-F02-01', 'done'), 'AC-F02-01'), [
+    { id: 'AC-F02-01', from: 'review', to: 'done' },
+  ]);
+});
+
+test('forbiddenStatusWrites reports every offending row, not only the first', () => {
+  const twice = setStatus(setStatus(TRACKER, 'AC-F02-01', 'done'), 'AC-F01-01', 'todo');
+  assert.deepEqual(forbiddenStatusWrites(TRACKER, twice, 'AC-F02-01'), [
+    { id: 'AC-F01-01', from: 'done', to: 'todo' },
+    { id: 'AC-F02-01', from: 'todo', to: 'done' },
+  ]);
+});
+
+test('forbiddenStatusWrites reports a row that vanished or appeared', () => {
+  // validateTable's `**Total:**` cross-check catches most of this, but only while the declared total is
+  // left alone — a turn that deletes a row AND edits the total walks through it, and a deleted row is a
+  // task nobody ever builds. `to: null` and `from: null` also tell the runner these two cannot be put
+  // back the way a changed status can.
+  const LAST = '| AC-F02-02 | F-02 | an added pet appears in the clinic-wide list | todo |\n';
+  const removed = TRACKER.replace(LAST, '').replace('**Total:** 4 rows.', '**Total:** 3 rows.');
+  assert.deepEqual(forbiddenStatusWrites(TRACKER, removed, 'AC-F02-02'), [
+    { id: 'AC-F02-02', from: 'todo', to: null },
+  ]);
+
+  const added = TRACKER.replace(LAST, `${LAST}| AC-F02-03 | F-02 | invented by the turn | done |\n`);
+  assert.deepEqual(forbiddenStatusWrites(TRACKER, added, 'AC-F02-01'), [
+    { id: 'AC-F02-03', from: null, to: 'done' },
+  ]);
+});
+
+test('forbiddenStatusWrites reads CRLF on both sides, so a Windows checkout is not a blanket refusal', () => {
+  // parseRows needs its trailing `\s*` for CRLF; without it the real trackers parse to ZERO rows. Here
+  // that would make every row look as though it had vanished and then reappeared — a run that refuses
+  // its first turn and every one after it.
+  const crlf = TRACKER.split('\n').join('\r\n');
+  assert.deepEqual(forbiddenStatusWrites(crlf, crlf, 'AC-F02-01'), []);
+  assert.deepEqual(forbiddenStatusWrites(crlf, setStatus(crlf, 'AC-F02-01', 'review'), 'AC-F02-01'), []);
+  assert.deepEqual(forbiddenStatusWrites(crlf, setStatus(crlf, 'AC-F02-01', 'done'), 'AC-F02-01'), [
+    { id: 'AC-F02-01', from: 'todo', to: 'done' },
+  ]);
 });

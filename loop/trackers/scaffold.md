@@ -11,20 +11,20 @@
 
 | ID | Group | Title | Status |
 |---|---|---|---|
-| S1 | wave-1 | Solution skeleton, csproj, build props, appsettings, reqnroll config | todo |
-| S2 | wave-2 | Config: typed settings and the loader with an env override | todo |
-| S3 | wave-2 | Models: Owner, Pet, PetType, Visit | todo |
-| S4 | wave-3 | HTTP core: RequestSpec, RequestSpecBuilder, ApiResponse, ApiClient | todo |
-| S5 | wave-4 | Services: all 22 routes of the conventions table | todo |
-| S6 | wave-5 | UniqueData: letters-only suffix, 10-digit telephone, invariant dates | todo |
-| S7 | wave-5 | ResourceTracker: drain in the mandatory order, swallow only 404 | todo |
-| S8 | wave-5 | ReadinessProbe: poll until ready, never restart anything | todo |
-| S9 | wave-6 | ScenarioState: scenario-scoped state for every request step | todo |
-| S10 | wave-6 | TestDataProvider and the case POCOs, keyed by the AC tag | todo |
-| S11 | wave-6 | BDD wiring: hooks, DI registration, non-parallelisable assembly | todo |
-| S12 | wave-7 | The 22 request steps, grouped by domain | todo |
-| S13 | wave-8 | Feature file skeletons for F-01, F-02, F-03 | todo |
-| S14 | wave-8 | The three smoke tests and their data file | todo |
+| S1 | wave-1 | Solution skeleton, csproj, build props, appsettings, reqnroll config | done |
+| S2 | wave-2 | Config: typed settings and the loader with an env override | done |
+| S3 | wave-2 | Models: Owner, Pet, PetType, Visit | done |
+| S4 | wave-3 | HTTP core: RequestSpec, RequestSpecBuilder, ApiResponse, ApiClient | done |
+| S5 | wave-4 | Services: all 22 routes of the conventions table | done |
+| S6 | wave-5 | UniqueData: letters-only suffix, 10-digit telephone, invariant dates | done |
+| S7 | wave-5 | ResourceTracker: drain in the mandatory order, swallow only 404 | done |
+| S8 | wave-5 | ReadinessProbe: poll until ready, never restart anything | done |
+| S9 | wave-6 | ScenarioState: scenario-scoped state for every request step | done |
+| S10 | wave-6 | TestDataProvider and the case POCOs, keyed by the AC tag | done |
+| S11 | wave-6 | BDD wiring: hooks, DI registration, non-parallelisable assembly | done |
+| S12 | wave-7 | The 22 request steps, grouped by domain | done |
+| S13 | wave-8 | Feature file skeletons for F-01, F-02, F-03 | done |
+| S14 | wave-8 | The three smoke tests and their data file | done |
 
 **Total:** 14 tasks in 8 waves.
 

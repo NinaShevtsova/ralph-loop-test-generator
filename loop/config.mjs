@@ -7,21 +7,30 @@
 // module, and a third copy of a formula is how the last one drifted.
 export { FLOW_GROUPS, flowDocPath, featurePath, dataPath } from '../scripts/flows.mjs';
 
+// The two tracker paths come from there too, because `scripts/checks.mjs` exempts exactly these
+// files from the stage-1 diff fence. Spelled out here as well, the fence and the runner could
+// disagree about which file the runner writes — and the fence would then refuse it.
+import { SCAFFOLD_TRACKER, TESTS_TRACKER } from '../scripts/flows.mjs';
+
 export const STAGES = {
   scaffold: {
-    tracker: 'loop/trackers/scaffold.md',
+    tracker: SCAFFOLD_TRACKER,
     prompt: 'loop/PROMPT.scaffold.md',
     rubric: 'loop/rubrics/scaffold.md',
-    // NOT 8. The runner spends one iteration per tracker ROW, not per wave: a wave whose tasks are all
-    // set to `review` closes its target row in the same iteration and then needs one judge-only
-    // iteration for each remaining row. Measured against the real 14-row tracker: 14 iterations
-    // minimum, 8 with an agent turn and 6 judge-only, and 22 with one rework per wave.
+    // NOT 8, and no longer 14-with-6-judge-only either. That arithmetic assumed a turn could deliver
+    // its whole wave, leaving the other rows to be graded without an agent turn. Batching is now
+    // refused — a diff spanning several rows cannot be attributed to one of them, and a real run
+    // deadlocked a row the judge could not reach — so every row costs one agent turn AND one judge
+    // call. 14 rows, 14 iterations minimum, and this ceiling leaves room for ten reworks across them.
+    //
+    // That is roughly 75% more agent turns than the batched shape cost. It buys the property the
+    // whole arrangement rests on: the judge is shown exactly the work of the row it is grading.
     maxIter: 24,
     kFailures: 3,
     noImprovement: 3,
   },
   tests: {
-    tracker: 'loop/trackers/tests.md',
+    tracker: TESTS_TRACKER,
     prompt: 'loop/PROMPT.tests.md',
     rubric: 'loop/rubrics/tests.md',
     // 20 ACs plus room for rework. A ceiling, NOT a budget: a healthy run ends itself at ~24

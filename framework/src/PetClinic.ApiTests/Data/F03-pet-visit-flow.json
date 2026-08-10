@@ -1,0 +1,40 @@
+{
+  "AC-F03-01": {
+    "owner": { "firstName": "Roman", "lastName": "Bondarenko",
+               "address": "14 Khreshchatyk Street", "city": "Kyiv", "telephone": "0501112233" },
+    "pet": { "name": "Pet", "birthDate": "2020-06-10" },
+    "visit": { "description": "Rabies shot", "date": "2025-11-05" }
+  },
+  "AC-F03-02": {
+    "owner": { "firstName": "Iryna", "lastName": "Kovalenko",
+               "address": "8 Franka Street", "city": "Lviv", "telephone": "0507654321" },
+    "pet": { "name": "Pet", "birthDate": "2020-08-01" },
+    "visit": { "description": "Checkup", "date": "2025-09-01" },
+    "visit2": { "description": "Follow-up shot", "date": "2025-09-15" }
+  },
+  "AC-F03-03": {
+    "owner": { "firstName": "Mykola", "lastName": "Shevchenko",
+               "address": "22 Sadova Street", "city": "Odesa", "telephone": "0509876543" },
+    "pet": { "name": "Pet", "birthDate": "2020-03-15" },
+    "visit": { "description": "Booster shot" }
+  },
+  "AC-F03-04": {
+    "owner": { "firstName": "Olena", "lastName": "Tkachenko",
+               "address": "5 Soborna Street", "city": "Kharkiv", "telephone": "0503334455" },
+    "pet": { "name": "Pet", "birthDate": "2020-04-20" },
+    "visit": { "description": "Follow-up exam", "date": "2025-10-10" }
+  },
+  "AC-F03-05": {
+    "owner": { "firstName": "Petro", "lastName": "Marchenko",
+               "address": "9 Lesi Ukrainky Street", "city": "Dnipro", "telephone": "0508887766" },
+    "pet": { "name": "Pet", "birthDate": "2020-02-12" },
+    "visit": { "description": "Cancelled checkup", "date": "2025-08-20" }
+  },
+  "AC-F03-06": {
+    "owner": { "firstName": "Halyna", "lastName": "Poliakova",
+               "address": "3 Nezalezhnosti Avenue", "city": "Vinnytsia", "telephone": "0502223344" },
+    "pet": { "name": "Pet", "birthDate": "2020-01-05" },
+    "visit": { "description": "First checkup", "date": "2025-06-01" },
+    "visit2": { "description": "Second checkup", "date": "2025-06-15" }
+  }
+}

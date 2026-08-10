@@ -27,6 +27,17 @@ export const flowSlug = (group) => mustKnow('flowSlug', group);
  */
 export const PROJECT = 'framework/src/PetClinic.ApiTests';
 
+/**
+ * The runner's own bookkeeping — state it writes and never commits.
+ *
+ * Named here because three modules need to agree on it: `loop/config.mjs` points each stage at one,
+ * `scripts/checks.mjs` exempts them from the stage-1 diff fence, and both must mean the same files.
+ * This file is where a path stops being spelled out twice.
+ */
+export const SCAFFOLD_TRACKER = 'loop/trackers/scaffold.md';
+export const TESTS_TRACKER = 'loop/trackers/tests.md';
+export const RUNNER_STATE = [SCAFFOLD_TRACKER, TESTS_TRACKER];
+
 /** All three repository-relative, so a caller joins them onto its own root. */
 export const flowDocPath = (group) =>
   `docs/specs/petclinic/flows/${group}-${mustKnow('flowDocPath', group).slice(4)}.md`;

@@ -6,14 +6,16 @@
 // so the delivered framework still runs against a shared environment.
 //
 //   node scripts/sut.mjs ensure    create the container if missing, start it, wait for ready
-//   node scripts/sut.mjs reset     restart (or create) and wait for ready
+//   node scripts/sut.mjs reset     restart (or create), wait for ready, and PROVE both happened
 //   node scripts/sut.mjs wait      only wait for ready
 //   node scripts/sut.mjs stop      stop the container
+//
+// `reset` is the one command a gate grades, and `runGate` grades it on its exit code alone, so its
+// exit code carries two proofs the readiness probe cannot give: the container's own start time moved
+// (`restartVerdict`), and the application that answered is serving the seed (`SEED_COUNTS`). Both
+// exist because `/pettypes` answering 200 is equally true of an application that never restarted.
 
-import { realpathSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
-
-import { run } from './lib.mjs';
+import { brokenInvocationMessage, invocation, run } from './lib.mjs';
 
 // The image listens on 9966 INSIDE the container, and that is not configurable from here — the
 // port and the /petclinic/api base path are baked into the published image. PETCLINIC_PORT moves
@@ -27,6 +29,48 @@ export const HOST_PORT = Number(process.env.PETCLINIC_PORT ?? CONTAINER_PORT);
 export const BASE_URL = process.env.PETCLINIC_BASE_URL ?? `http://localhost:${HOST_PORT}/petclinic/api`;
 export const READY_URL = `${BASE_URL.replace(/\/+$/, '')}/pettypes`;
 export const READY_TIMEOUT_MS = Number(process.env.PETCLINIC_READY_TIMEOUT_MS ?? 90000);
+
+/**
+ * The H2 seed the image reloads on every start. Measured against a freshly reset container on
+ * 2026-08-09: `GET /pettypes` 6, `/owners` 10, `/pets` 13, `/visits` 4.
+ *
+ * These exist to answer the question the readiness probe cannot: `/pettypes` answering `200` is
+ * equally true of an application that was never restarted. Leftover records from a previous run are
+ * the harmful case and they show up as counts ABOVE the seed.
+ */
+export const SEED_COUNTS = { pettypes: 6, owners: 10, pets: 13, visits: 4 };
+
+/**
+ * The collections holding more records than the seed, described for a human. Empty means clean.
+ *
+ * Only the ABOVE direction is a failure. Below-seed cannot be leftover data — it is either a
+ * different image or a collection read while the seed was still loading — and turning that into a
+ * red gate would stop the loop for something that is not the condition D-09 cares about.
+ */
+export function aboveSeed(counts, seed = SEED_COUNTS) {
+  return Object.entries(seed)
+    .filter(([name, expected]) => Number.isInteger(counts?.[name]) && counts[name] > expected)
+    .map(([name, expected]) => `${name}: ${counts[name]}, seed ${expected}`);
+}
+
+/**
+ * What the container's own start time says about a restart: `'moved'`, `'unmoved'` or `'unreadable'`.
+ *
+ * `docker inspect -f '{{.State.StartedAt}}'` is the strongest proof available that is independent of
+ * the test data. Measured across `docker restart petclinic`:
+ * `2026-08-09T17:51:55.794465458Z` -> `2026-08-09T17:56:13.340830095Z`.
+ *
+ * A missing `before` is only acceptable when the container did not exist and was created — otherwise
+ * the baseline could not be read and there is nothing to compare, which is `'unreadable'` and not
+ * proof. Treating that as `'moved'` would reinstate the whole defect: a step reporting success for a
+ * check it never managed to run.
+ */
+export function restartVerdict(before, after, { created = false } = {}) {
+  if (!after) return 'unreadable';
+  if (!created && !before) return 'unreadable';
+  if (before && before === after) return 'unmoved';
+  return 'moved';
+}
 
 /**
  * Polls `url` until PetClinic answers `200`, or the budget expires. Resolves
@@ -190,6 +234,104 @@ async function waitOrDie() {
   process.exit(1);
 }
 
+/**
+ * The container's own start time, or `''` when docker will not say.
+ *
+ * Reads `.stdout`, NOT `.out`, for the reason `exists()` documents: `run()` merges stderr in, and a
+ * credential-helper warning would then be compared as if it were the timestamp.
+ */
+function startedAt() {
+  const result = run('docker', ['inspect', '-f', '{{.State.StartedAt}}', CONTAINER]);
+  return result.ok ? result.stdout.trim() : '';
+}
+
+/**
+ * Refuses unless the container's start time actually moved.
+ *
+ * This is the half of D-09 nothing checked. `reset` used to prove only that `/pettypes` answers
+ * `200` — which an application that was never restarted answers too — so a `reset` that did nothing
+ * exited 0, the gate went green, and every red test afterwards was blamed on the test. The runner
+ * grades this step on its exit code alone; the exit code is therefore what has to be honest.
+ */
+function requireRestarted(before, after, created) {
+  const verdict = restartVerdict(before, after, { created });
+  if (verdict === 'moved') {
+    console.log(`sut: ${CONTAINER} start time ${before || '(newly created)'} -> ${after}`);
+    return;
+  }
+  if (verdict === 'unmoved') {
+    console.error(
+      `sut: ${CONTAINER} reports the same start time before and after the restart (${after}) — ` +
+        `the container did not restart, so the database still holds whatever the last run left in it`
+    );
+    process.exit(1);
+  }
+  console.error(
+    `sut: cannot read ${CONTAINER}'s start time from \`docker inspect\`, so there is no evidence the ` +
+      `reset happened — refusing to report success for a step that may have done nothing`
+  );
+  process.exit(1);
+}
+
+/**
+ * The second, independent signal: the restarted application is serving the SEED and nothing more.
+ *
+ * The start-time check proves the action; this proves the outcome, and it is the only one of the two
+ * that survives a `PETCLINIC_BASE_URL` pointing at a different host from the container we restarted
+ * (`checkConfig` compares the port, not the host).
+ */
+async function requireSeedCounts() {
+  const root = BASE_URL.replace(/\/+$/, '');
+  const counts = {};
+  const unread = [];
+
+  for (const name of Object.keys(SEED_COUNTS)) {
+    try {
+      const response = await fetch(`${root}/${name}`, {
+        signal: AbortSignal.timeout(10000),
+        redirect: 'manual',
+      });
+      if (response.status !== 200) {
+        unread.push(`${name} (HTTP ${response.status})`);
+        await response.arrayBuffer().catch(() => {});
+        continue;
+      }
+      const body = await response.json();
+      if (!Array.isArray(body)) unread.push(`${name} (not a JSON array)`);
+      else counts[name] = body.length;
+    } catch (error) {
+      unread.push(`${name} (${error?.message ?? error})`);
+    }
+  }
+
+  const over = aboveSeed(counts);
+  if (over.length > 0) {
+    console.error(`sut: the database is NOT at its seed after the restart — ${over.join('; ')}`);
+    console.error(
+      'sut: counts above the seed are records that survived the reset, which is exactly the dirty ' +
+        'state D-09 exists to prevent'
+    );
+    console.error(
+      `sut: (if PETCLINIC_IMAGE was changed, the seed recorded in scripts/sut.mjs — ` +
+        `${JSON.stringify(SEED_COUNTS)} — is what is stale)`
+    );
+    process.exit(1);
+  }
+
+  // A check that counted NOTHING is not a passing check — `Verdict.report` refuses on exactly this
+  // shape. The readiness probe has already had `/pettypes` answer 200, so no collection being
+  // readable means the answer came from something that is not this application.
+  const seen = Object.entries(counts).map(([name, n]) => `${name}: ${n}`);
+  if (seen.length === 0) {
+    console.error(`sut: not one seeded collection could be counted — ${unread.join(', ')}`);
+    console.error('sut: refusing to report a clean database that nothing was able to look at');
+    process.exit(1);
+  }
+
+  console.log(`sut: seed intact — ${seen.join(', ')}`);
+  if (unread.length > 0) console.log(`sut: not compared — ${unread.join(', ')}`);
+}
+
 /** Configuration that would make the script probe one endpoint while the container binds another. */
 function checkConfig() {
   for (const [name, value] of [
@@ -227,25 +369,29 @@ function checkConfig() {
 /**
  * Only act as a CLI when executed directly — imported by tests, this file must stay inert.
  *
- * `realpathSync.native` is not optional. Node resolves the main module to its REAL path for
- * `import.meta.url`, while `process.argv[1]` keeps whatever path was typed. Reached through a
- * junction, a symlink or a `subst` drive — all ordinary on Windows — the two never match, the whole
- * `switch` is skipped, and `node scripts/sut.mjs reset` exits **0 having done nothing**. Measured:
- * through a junction, `sut.mjs bogus` printed nothing and exited 0; through the real path it
- * printed the error and exited 2. `runGate` only checks the exit code, so the gate would go green
- * without resetting the database, and every red test afterwards would be blamed on the test.
+ * The three-way answer is the point, and `lib.mjs` carries the measurements. `'import'` stays inert,
+ * as `tests/sut.test.mjs` requires. `'broken'` — argv[1] names THIS file and cannot be confirmed to
+ * BE this file — used to be indistinguishable from an import, so the whole `switch` below was
+ * skipped and `node scripts/sut.mjs reset` exited **0 having done nothing** (measured through a
+ * `subst` drive). `runGate` grades on the exit code alone, so the gate went green without a reset and
+ * every red test afterwards was blamed on the test rather than on the database. Whatever the
+ * environment does to path spellings, `node …/sut.mjs` now either runs or exits non-zero.
  */
-const executedDirectly = (() => {
-  const entry = process.argv[1];
-  if (!entry) return false;
-  try {
-    return import.meta.url === pathToFileURL(realpathSync.native(entry)).href;
-  } catch {
-    return false;
-  }
-})();
+const how = invocation(import.meta.url, process.argv[1]);
 
-if (executedDirectly) {
+if (how === 'broken') {
+  console.error(
+    brokenInvocationMessage(
+      import.meta.url,
+      process.argv[1],
+      'exiting 2 rather than 0, because a silent 0 here is a gate step reporting that it reset the ' +
+        'database when it did not run at all'
+    )
+  );
+  process.exit(2);
+}
+
+if (how === 'cli') {
   checkConfig();
 
   const command = process.argv[2] ?? 'ensure';
@@ -255,11 +401,19 @@ if (executedDirectly) {
       else start();
       await waitOrDie();
       break;
-    case 'reset':
-      if (!exists()) create();
+    case 'reset': {
+      // The proof, in the order the evidence becomes available: the start time is readable the
+      // moment docker returns, so it is compared BEFORE spending the readiness budget on a container
+      // that never moved.
+      const present = exists();
+      const before = present ? startedAt() : '';
+      if (!present) create();
       else restart();
+      requireRestarted(before, startedAt(), !present);
       await waitOrDie();
+      await requireSeedCounts();
       break;
+    }
     case 'wait':
       await waitOrDie();
       break;

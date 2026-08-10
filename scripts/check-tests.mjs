@@ -351,6 +351,19 @@ const allSteps = stepFiles.flatMap((file) =>
 const reportable = [];
 for (let i = 0; i < allSteps.length; i += 1) {
   for (let j = i + 1; j < allSteps.length; j += 1) {
+    // The SAME sentence bound as both `[Given]` and `[When]` is not a duplicate, it is the maximum
+    // reuse this check exists to encourage. Reqnroll's documented way to make one step usable as a
+    // precondition and as an action is two attributes on one method or two bindings of one sentence,
+    // and stage 0 produced six such pairs deliberately.
+    //
+    // Measured before this exemption: `check-tests.mjs --ac AC-F01-01` hard-failed on all six with
+    // "reuse the existing sentence instead of rewording it" — against sentences that were byte
+    // identical. Stage 1 could not have taken its first turn.
+    //
+    // Only IDENTICAL text is exempt, and only across kinds. A `[Given]` and a `[When]` whose wording
+    // merely resembles each other is still a rewording, which is what the band is for.
+    if (allSteps[i].kind !== allSteps[j].kind && allSteps[i].text === allSteps[j].text) continue;
+
     const score = similarity(allSteps[i].text, allSteps[j].text);
     const reordered = isReordering(allSteps[i].text, allSteps[j].text);
 

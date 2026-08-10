@@ -407,3 +407,45 @@ test('literalIds does not fire on a plural-named call or a zero placeholder', ()
   assert.equal(literalIds('builder.AddPet(2);').length, 1);
   assert.equal(literalIds('long petId = 3;').length, 1);
 });
+
+// ── The fence's exemption for the runner's own bookkeeping ──────────────────────────
+
+test('outsideFence lets the runner\'s tracker ride along in a turn\'s commit', () => {
+  // Measured on the real run: the runner writes the tracker and never commits it, so an agent using
+  // `git add -A` sweeps it in. Commit 9b56ba5 carries `S4 todo -> done` — written by the RUNNER after
+  // a judge PASS — beside the agent's own `S5 todo -> review`. Without the exemption every stage-1
+  // rework turn by such an agent is refused for touching a file no agent edited.
+  assert.deepEqual(
+    outsideFence([
+      'framework/src/PetClinic.ApiTests/Features/F01-owner-lifecycle.feature',
+      'framework/src/PetClinic.ApiTests/StepDefinitions/OwnerSteps.cs',
+      'loop/trackers/tests.md',
+    ]),
+    []
+  );
+  assert.deepEqual(outsideFence(['loop/trackers/scaffold.md']), []);
+});
+
+test('the exemption is exact, so nothing that merely looks like a tracker gets in', () => {
+  // A `loop/` prefix would have let the prompts, the rubrics and the verdict files through, and a
+  // turn has no business committing any of them. These five are the near misses worth naming.
+  for (const path of [
+    'loop/trackers/tests.md.bak',
+    'loop/trackers/tests.md.tmp',
+    'loop/trackers/evil.md',
+    'loop/rubrics/tests.md',
+    'loop/PROMPT.tests.md',
+  ]) {
+    assert.deepEqual(outsideFence([path]), [path], `${path} must still be a stray`);
+  }
+});
+
+test('exempting the path does not exempt the framework it sits beside', () => {
+  // The two guards answer different questions. This one asks "did you rewrite the framework"; the
+  // tracker's content is answered by forbiddenStatusWrites, which compares every row across the turn.
+  assert.deepEqual(outsideFence(['scripts/checks.mjs']), ['scripts/checks.mjs']);
+  assert.deepEqual(
+    outsideFence(['framework/src/PetClinic.ApiTests/Support/ResourceTracker.cs']),
+    ['framework/src/PetClinic.ApiTests/Support/ResourceTracker.cs']
+  );
+});
