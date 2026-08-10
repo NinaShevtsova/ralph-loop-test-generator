@@ -1,6 +1,6 @@
 # Operating the loop
 
-Bring the environment up, run the tests, watch the loop rebuild or regenerate, add criteria of your own.
+Bring the environment up, run the tests, watch the loop rebuild everything, add criteria of your own.
 
 ---
 
@@ -68,9 +68,6 @@ npm run sut -- reset
 It regenerates both halves: first the framework skeleton — solution, HTTP client, service objects,
 data provider, hooks, step definitions — then the tests from your acceptance criteria.
 
-The other reason is repair: the framework's design changed, or something broke badly enough that
-rebuilding costs less than fixing it by hand.
-
 About 34 iterations — batches, over more than one sitting.
 
 **Step 1 — tag a return point.** The reset deletes `framework/` from the working tree but not from
@@ -109,94 +106,46 @@ npm run reset -- --yes
 git add -A && git commit -m "chore(loop): full reset"
 ```
 
-**Step 5 — build the framework first.** Stage 1 is impossible until all 14 stage-0 rows are `done` —
-before that its gate has nothing to build.
+**Step 5 — build the framework.** Stage 1 is impossible until every stage-0 row is `done` — before
+that its gate has nothing to build.
 
 ```bash
 MAX_ITER=2 node loop/ralph.mjs --stage scaffold
 ```
 
-Commit between batches as in section 4, step 8, and repeat until the dry run reports every row done:
-
-```bash
-node loop/ralph.mjs --stage scaffold --dry-run
-```
-
-**Step 6 — then generate the tests.** Continue from section 4, step 5.
-
----
-
-## 4. Regenerate the tests (keep the framework)
-
-**Use this when you want to watch the loop generate tests, without rebuilding the framework.**
-
-It regenerates the twenty scenarios, their step definitions and their data from your acceptance
-criteria — the agent writing a scenario, the judge refusing it when a claim has nothing asserting it,
-the agent fixing exactly that. The framework stays, so you only pay for the tests and can stop after
-two iterations.
-
-The other reason is repair: the criteria changed, and the scenarios describe behaviour the system no
-longer has. Regenerating beats patching twenty by hand.
-
-About 20 iterations — run it in batches.
-
-**Step 1 — start from a clean tree.** Empty output is good.
-
-```bash
-git status --porcelain --untracked-files=normal
-```
-
-**Step 2 — preview.** Changes nothing. Check that `delete framework` is **not** in the list.
-
-```bash
-npm run reset -- --stage tests
-```
-
-**Step 3 — do it.**
-
-```bash
-npm run reset -- --yes --stage tests
-```
-
-**Step 4 — commit.** Required. The trackers are committed files, so the reset leaves the tree dirty
-and the loop will refuse to start.
-
-```bash
-git add -A && git commit -m "chore(loop): reset the tests tracker"
-```
-
-**Step 5 — check the environment is alive.**
-
-```bash
-npm run sut -- ensure
-```
-
-**Step 6 — dry run.** Free. Expect `20 todo`, `next: AC-F01-01`, `start: ready`. If it says
-`not ready`, go back to step 4.
-
-```bash
-node loop/ralph.mjs --stage tests --dry-run
-```
-
-**Step 7 — run a batch.** `--flow` picks the slice, `MAX_ITER` caps the iterations. Do not run all 20
-at once.
-
-```bash
-MAX_ITER=2 node loop/ralph.mjs --stage tests --flow F-01
-```
-
-**Step 8 — commit, then repeat step 7.** The runner writes the tracker after every verdict and never
-commits it, so the tree is dirty again after each batch and the next one will refuse.
+**Step 6 — commit, then repeat step 5.** The runner writes the tracker after every verdict and never
+commits it, so the tree is dirty after each batch and the next one will refuse to start.
 
 ```bash
 git add -A && git commit -m "chore(loop): record progress"
 ```
 
-Flows are `F-01` (4 criteria), `F-02` (10), `F-03` (6).
+Repeat until the dry run reports every row done:
+
+```bash
+node loop/ralph.mjs --stage scaffold --dry-run
+```
+
+**Step 7 — generate the tests.** Same rhythm: a batch, then a commit. `--flow` picks the slice —
+`F-01` has 4 criteria, `F-02` has 10, `F-03` has 6.
+
+```bash
+MAX_ITER=2 node loop/ralph.mjs --stage tests --flow F-01
+```
+
+Look at the first accepted scenario before letting it write nineteen more. It becomes the exemplar
+fed to every later iteration, so its style is copied — which is why the judge is strictest about the
+first one.
+
+**Step 8 — check the result.**
+
+```bash
+dotnet test framework/ApiTests.sln --nologo
+```
 
 ---
 
-## 5. Add a new acceptance criterion to an existing flow
+## 4. Add a new acceptance criterion to an existing flow
 
 **Use this when you want more tests to be generated based on new ACs, and the ones you have should stay.**
 
@@ -247,7 +196,7 @@ ones.
 MAX_ITER=2 node loop/ralph.mjs --stage tests --flow F-01
 ```
 
-Commit between batches as in section 4, step 8.
+Commit between batches, as in section 3, step 6.
 
 The new scenarios go into the **same** feature file and reuse the existing step definitions — 58 of
 them at last count, 51 already used by more than one scenario. Expect most new criteria to need one or
@@ -255,7 +204,7 @@ two new `Then` steps at most.
 
 ---
 
-## 6. Add a whole new flow
+## 5. Add a whole new flow
 
 **Use this when the new criteria are not about anything the three existing flows cover.**
 
@@ -263,7 +212,7 @@ A flow is a group of related criteria sharing one feature file and one data file
 (`F-01`), owners and pets (`F-02`), pets and visits (`F-03`). Criteria about veterinarians fit none of
 them, and filing them under `pet-visit-flow` gives the next reader a wrong name to un-learn.
 
-So: section 5, plus three steps first — tell the loop the flow exists, give it a document to read the
+So: section 4, plus three steps first — tell the loop the flow exists, give it a document to read the
 criteria from, and a file to write the scenarios into.
 
 The example below is `F-04`.
@@ -293,7 +242,7 @@ The gate reads this file, so it must exist before the first turn. If you want a 
 (section 3) to recreate it, also add it to `scripts/manifest.scaffold.mjs` and give it a row in
 `loop/trackers/scaffold.md` — otherwise a full reset deletes `framework/` and will not put it back.
 
-**Steps 4 to 7** — tracker rows, `**Total:**`, `npm test`, commit, exactly as in section 5. Then:
+**Steps 4 to 7** — tracker rows, `**Total:**`, `npm test`, commit, exactly as in section 4. Then:
 
 ```bash
 MAX_ITER=2 node loop/ralph.mjs --stage tests --flow F-04
@@ -301,26 +250,23 @@ MAX_ITER=2 node loop/ralph.mjs --stage tests --flow F-04
 
 ---
 
-## 7. The two reset commands
+## 6. The reset command
 
-`--yes` decides *show or do*. `--stage` decides *how much*. Without `--yes` both only print a list.
+`npm run reset` resets both trackers, deletes the journal, `STEPS.md` and the verdicts, and removes
+`framework/` — everything the loop produced.
 
-| | `npm run reset` | `npm run reset -- --stage tests` |
-|---|---|---|
-| stage-0 tracker | resets | leaves alone |
-| stage-1 tracker | resets | resets |
-| journal, `STEPS.md`, verdicts | deletes | deletes |
-| **`framework/`** | **deletes** | **keeps** |
+Without `--yes` it prints that list and changes nothing, which is the safe way to see what a reset
+would cost before agreeing to it.
 
 ---
 
-## 8. Troubleshooting
+## 7. Troubleshooting
 
 **`SUT ... did not become ready within 90000 ms`**
 The application is not running. Section 1 — usually Docker Desktop itself is not started.
 
 **`working tree is dirty — commit, stash, or pass --allow-dirty`**
-A commit was skipped. Section 4, step 4 or step 8.
+A commit was skipped. Section 3, step 4 or step 6.
 
 **`the repository was red before the turn`**
 The gate was already failing before the agent was called, so the run stopped without spending
@@ -340,7 +286,7 @@ appears, the loop reports it as uncommitted work — add it to `.gitignore`, the
 
 **`npm test` fails after editing a flow document or a tracker**
 Read the failure: the tracker and the flow documents disagree about which criteria exist, an id names
-a flow other than its row's group, or a title diverges from the Test plan table. That is section 5
+a flow other than its row's group, or a title diverges from the Test plan table. That is section 4
 step 5 doing its job — fix the data before running the loop.
 
 ---

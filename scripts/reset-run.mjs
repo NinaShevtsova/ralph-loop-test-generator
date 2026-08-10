@@ -31,6 +31,38 @@ if (stage && !STAGES[stage]) {
   process.exit(2);
 }
 
+/*
+ * `--stage tests` is refused, because what it does is always inconsistent.
+ *
+ * It resets the twenty tracker rows and leaves the twenty generated scenarios on disk, because
+ * `framework/` is stage 0's output and this flag is meant to spare it. But `check-tests.mjs` requires
+ * the scenario count to equal the done count plus one, so the very first turn is rejected — 20
+ * scenarios against 0 done rows — and after three such failures `K_FAILURES` stops the run having
+ * built nothing and spent three agent turns.
+ *
+ * Refused here rather than warned about in the runbook, because a reader copies the command out of a
+ * document; they do not copy the caveat next to it.
+ *
+ * Making it work needs something this script cannot do yet: put `Features/`, `StepDefinitions/` and
+ * `Data/` back to their post-stage-0 state. Stage 1 writes INTO files stage 0 created — its `Then`
+ * steps are interleaved with stage 0's request steps in the same files — so the two cannot be
+ * separated textually, and the commit that held the boundary is no longer on the branch.
+ */
+if (stage === 'tests') {
+  console.error(
+    'reset-run: --stage tests is not supported.\n' +
+      '\n' +
+      'It would reset the tracker to 20 todo while leaving the 20 generated scenarios in place, and\n' +
+      'the gate requires the scenario count to equal the done count plus one. The first turn would be\n' +
+      'rejected with "20 scenarios against 0 done rows", and the run would stop after three failures\n' +
+      'having built nothing.\n' +
+      '\n' +
+      'To rebuild the tests, rebuild the framework with them: `npm run reset -- --yes`.\n' +
+      'To ADD criteria, no reset is needed — append rows as `todo` and run the loop on that flow.'
+  );
+  process.exit(2);
+}
+
 const stages = stage ? [stage] : Object.keys(STAGES);
 const planned = [];
 

@@ -106,20 +106,30 @@ test('reset-run --yes returns every row to todo and clears the state a checkout 
   }
 });
 
-test('reset-run --stage tests leaves stage 0 and its output alone', () => {
-  // Regenerating the tests without rebuilding the framework is the common case, and the expensive
-  // mistake would be to take `framework/` with it.
+test('reset-run refuses --stage tests, and changes nothing when it does', () => {
+  // This test asserted the opposite until the mode was found to be broken by construction. It resets
+  // the tracker to 20 todo and leaves the 20 generated scenarios on disk, because `framework/` is
+  // stage 0's output and the flag exists to spare it — but check-tests.mjs requires the scenario count
+  // to equal the done count plus one, so the first turn is rejected with "20 scenarios against 0 done
+  // rows" and K_FAILURES stops the run after three, having built nothing and spent three agent turns.
+  //
+  // Refusing in the script rather than warning in the runbook: a reader copies the command out of a
+  // document, not the caveat beside it.
   const dir = usedRepo();
   try {
-    const result = reset(dir, ['--yes', '--stage', 'tests']);
-    assert.equal(result.ok, true, result.out);
+    const before = readFileSync(join(dir, 'loop/trackers/tests.md'), 'utf8');
 
-    assert.ok(existsSync(join(dir, 'framework/src/Owner.cs')), 'stage 0 output must survive');
-    assert.equal(countByStatus(readFileSync(join(dir, 'loop/trackers/scaffold.md'), 'utf8')).done, 1);
-    assert.deepEqual(
-      countByStatus(readFileSync(join(dir, 'loop/trackers/tests.md'), 'utf8')),
-      { todo: 20, review: 0, rework: 0, blocked: 0, done: 0 }
-    );
+    const result = reset(dir, ['--yes', '--stage', 'tests']);
+    assert.equal(result.status, 2, result.out);
+    assert.match(result.out, /--stage tests is not supported/);
+    assert.match(result.out, /20 scenarios against 0 done rows/, 'the refusal must say why');
+    assert.match(result.out, /npm run reset -- --yes/, 'and what to do instead');
+
+    // A refusal that had already deleted something would be worse than no refusal at all.
+    assert.equal(readFileSync(join(dir, 'loop/trackers/tests.md'), 'utf8'), before, 'tracker untouched');
+    assert.ok(existsSync(join(dir, 'framework/src/Owner.cs')), 'framework untouched');
+    assert.ok(existsSync(join(dir, 'loop/JOURNAL.md')), 'journal untouched');
+    assert.ok(existsSync(join(dir, 'loop/verdicts/S1.md')), 'verdicts untouched');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

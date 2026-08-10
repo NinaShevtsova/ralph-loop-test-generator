@@ -383,3 +383,43 @@ path, verb or status code in a step line, and the JSON one parsing to a single A
 One correction to the plan for this work: the rubric's block structure is **A 4 / B 6 / C 7 / D 5 /
 E 5 = 27**, not the 26 the body of this review records. Item 17 is the §10.9 item added when B2 was
 fixed, and it is in block C.
+
+---
+
+## Addendum, 2026-08-10 — the from-scratch rerun, measured
+
+The loop was only ever built forward: an empty directory became the framework, then the twenty
+tests. Nobody had since reset it and walked the same road again. Every individual piece had run; the
+sequence **starting from a reset** had not, and no amount of reading settles that — the question is
+whether reset, start and first turn link up at all.
+
+One iteration answers it, and one iteration is cheap. Run from `46dba15`, with the gitignored state
+(journal, step inventory, 120 verdicts) copied aside first, because `git reset --hard` cannot bring
+those back.
+
+| link | result |
+|---|---|
+| `npm run reset -- --yes` | 125 items removed; `.gitkeep` survived; it warned the tree was now dirty |
+| start | 14 `todo`, target S1, no exemplar, `start: ready` |
+| agent turn | 5 files, 95 lines, from an empty directory (`d5324d5`) |
+| gates | `dotnet build` green, `check-scaffold --through-row S1` green, SUT reset ok, `dotnet test` correctly reported zero tests |
+| judge | `PASS` |
+| bookkeeping | tracker 0 → 1 `done`, journal written, verdict written |
+
+No manual intervention anywhere along it. The agent, handed a prompt with nothing on disk, produced
+`ApiTests.sln`, `Directory.Build.props`, `reqnroll.json`, the csproj with FluentAssertions pinned to
+`[7.2.2]`, and `appsettings.json`.
+
+Two things worth separating. The reset **warned about the consequence it creates** — the trackers are
+committed files, so resetting them dirties the tree and the runner refuses to start on a dirty tree.
+Without that line the operator meets a refusal pointing at a file the reset itself wrote. And the
+partial mode is a different question entirely: `--stage tests` is refused, and that refusal is what
+the same commit adds. The full reset works; the partial one never could.
+
+Restored afterwards to `46dba15` with the state put back: journal at the same md5, 120 verdicts, 42
+framework files, 14/14 and 20/20 `done`, 23 tests against the live PetClinic green, 430 harness tests
+green, tree clean.
+
+**What this does not establish:** that all 34 iterations run to completion unattended. That is still
+taken on trust — but the trust now rests on two things rather than one: every iteration has run once
+already, *and* the road from a reset to the first turn has been walked.
