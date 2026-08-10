@@ -1,0 +1,20 @@
+{
+  "name": "ai-integration-tests-generator",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Two-stage blind loop that builds a C# BDD API test framework and generates integration tests from acceptance criteria.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test",
+    "ralph": "node loop/ralph.mjs",
+    "sut": "node scripts/sut.mjs",
+    "check:scaffold": "node scripts/check-scaffold.mjs",
+    "check:tests": "node scripts/check-tests.mjs",
+    "steps": "node scripts/steps-inventory.mjs",
+    "api:build": "dotnet build framework/ApiTests.sln",
+    "api:test": "dotnet test framework/ApiTests.sln"
+  }
+}

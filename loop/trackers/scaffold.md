@@ -1,0 +1,200 @@
+# Tracker — stage 0 (scaffold)
+
+> One row per task, 14 tasks in 8 waves. **One wave is one iteration** (design D-07): stage 0's
+> gate is an objective file manifest and its tasks are structural, so batching a layer per turn
+> carries low semantic risk.
+>
+> States: `todo` · `review` · `rework` · `blocked` · `done`.
+> `done` is written by the **runner** only, on a `PASS` verdict from the judge — never by the agent.
+>
+> Rows are walked in file order, and order is the only dependency mechanism. Do not reorder.
+
+| ID | Group | Title | Status |
+|---|---|---|---|
+| S1 | wave-1 | Solution skeleton, csproj, build props, appsettings, reqnroll config | todo |
+| S2 | wave-2 | Config: typed settings and the loader with an env override | todo |
+| S3 | wave-2 | Models: Owner, Pet, PetType, Visit | todo |
+| S4 | wave-3 | HTTP core: RequestSpec, RequestSpecBuilder, ApiResponse, ApiClient | todo |
+| S5 | wave-4 | Services: all 22 routes of the conventions table | todo |
+| S6 | wave-5 | UniqueData: letters-only suffix, 10-digit telephone, invariant dates | todo |
+| S7 | wave-5 | ResourceTracker: drain in the mandatory order, swallow only 404 | todo |
+| S8 | wave-5 | ReadinessProbe: poll until ready, never restart anything | todo |
+| S9 | wave-6 | ScenarioState: scenario-scoped state for every request step | todo |
+| S10 | wave-6 | TestDataProvider and the case POCOs, keyed by the AC tag | todo |
+| S11 | wave-6 | BDD wiring: hooks, DI registration, non-parallelisable assembly | todo |
+| S12 | wave-7 | The 22 request steps, grouped by domain | todo |
+| S13 | wave-8 | Feature file skeletons for F-01, F-02, F-03 | todo |
+| S14 | wave-8 | The three smoke tests and their data file | todo |
+
+**Total:** 14 tasks in 8 waves.
+
+---
+
+## Task details
+
+Paths are relative to the repository root. `PROJECT` below is
+`framework/src/PetClinic.ApiTests`. The authoritative description of every file's responsibility
+is §4 of [the design](../../docs/specs/2026-08-05-bdd-api-tests-ralph-loop-design.md).
+
+### S1 — Solution skeleton
+
+**Files:** `framework/ApiTests.sln`, `framework/Directory.Build.props`, `framework/reqnroll.json`,
+`PROJECT/PetClinic.ApiTests.csproj`, `PROJECT/appsettings.json`
+
+**DoD:** `dotnet build framework/ApiTests.sln` is green on an otherwise empty project.
+
+`Directory.Build.props` sets `net8.0`, `<Nullable>enable</Nullable>` and
+`<TreatWarningsAsErrors>true</TreatWarningsAsErrors>`. The csproj references RestSharp, NUnit,
+NUnit3TestAdapter, Reqnroll.NUnit, Microsoft.Extensions.Configuration.Json, and FluentAssertions
+**pinned to an exact version inside 7.x** using the bracket form `Version="[7.a.b]"` — resolve the
+concrete patch from NuGet, do not guess it. A floating `7.*` or any `8.x` fails the gate (D-03).
+`appsettings.json` holds `baseUrl`, `timeoutMs`, `readinessPath`, `readinessTimeoutMs`.
+
+### S2 — Config
+
+**Files:** `PROJECT/Config/TestSettings.cs`, `PROJECT/Config/SettingsLoader.cs`
+
+**DoD:** `baseUrl` is read from `appsettings.json` and overridden by the environment variable
+`PETCLINIC_BASE_URL` when it is set. No literal `http://localhost:9966` anywhere in C# code.
+
+### S3 — Models
+
+**Files:** `PROJECT/Models/Owner.cs`, `Pet.cs`, `PetType.cs`, `Visit.cs`
+
+**DoD:** the schemas of `docs/specs/petclinic/contracts/openapi.yaml` are represented without loss.
+`Owner` carries `pets`, `Pet` carries `ownerId`, `type` and `visits`, `Visit` carries `petId`.
+The `Visit` request body must be buildable **without** `id`: submitting `id` gives a `500` (§11).
+
+### S4 — HTTP core
+
+**Files:** `PROJECT/Http/RequestSpec.cs`, `RequestSpecBuilder.cs`, `ApiResponse.cs`, `ApiClient.cs`
+
+**DoD:** a smoke call to `GET /pettypes` through `ApiClient` returns 200.
+
+`RequestSpec` is the reusable request specification: base URL, default `Content-Type` and `Accept`
+of `application/json`, timeout. Immutable, with a static `Default(TestSettings)`. `ApiClient` owns
+**one** `RestClient` for the whole run and exposes it as `ApiClient.Shared`; no second
+`new RestClient` may exist anywhere. `ApiResponse` exposes `StatusCode`, a typed `Body`,
+`RawContent`, `Headers` and `EnsureStatus(HttpStatusCode)` which throws with `RawContent` in the
+message — that message is what makes a wrong code diagnosable at the request site (rubric 17).
+
+### S5 — Services
+
+**Files:** `PROJECT/Services/OwnersService.cs`, `PetsService.cs`, `VisitsService.cs`,
+`PetTypesService.cs`
+
+**DoD:** all 22 routes of §7 of `docs/specs/petclinic/context-and-conventions.md` are present.
+Not "almost all" — a missing route stalls a later AC.
+
+The asymmetry matters and is easy to get wrong: a pet is created **only** through
+`POST /owners/{ownerId}/pets` and deleted **only** through `DELETE /pets/{petId}`; a pet is updated
+by **two** routes (`PUT /pets/{petId}` and `PUT /owners/{ownerId}/pets/{petId}`); a visit is created
+by **two** routes (`POST /owners/{ownerId}/pets/{petId}/visits` and `POST /visits`).
+
+### S6 — UniqueData
+
+**Files:** `PROJECT/Support/UniqueData.cs`
+
+**DoD:** unit checks prove `LastName("Testowner")` appends a **letters-only** suffix and stays
+within 30 characters; `Telephone()` returns exactly 10 digits; `PetName()` stays within 30;
+`PetTypeName()` within 80; every date is formatted `yyyy-MM-dd` with `InvariantCulture`.
+
+Why each constraint exists: digits in a last name are rejected with `400` (§10.5); a telephone of
+11–20 digits passes schema validation and then fails with `500` on save (§11); on a `uk-UA` machine
+a culture-sensitive `ToString()` produces `14.05.2020` and the request is rejected.
+
+### S7 — ResourceTracker
+
+**Files:** `PROJECT/Support/ResourceTracker.cs`
+
+**DoD:** `Drain()` deletes in the order **visits → pets → owners → pettypes**, swallows `404`
+specifically (not any exception), and a second `Drain()` does not throw.
+
+The order is mandatory, not stylistic: an owner with two pets of the same type cannot be deleted —
+the request answers `404` and nothing is removed (§11).
+
+### S8 — ReadinessProbe
+
+**Files:** `PROJECT/Support/ReadinessProbe.cs`
+
+**DoD:** polls `GET /pettypes` until it answers, honours `readinessTimeoutMs`, and fails with a
+message that names the URL and the timeout.
+
+It must **never** restart the SUT (D-10). Restarting lives in `scripts/sut.mjs`, so the delivered
+framework still runs against a shared environment.
+
+### S9 — ScenarioState
+
+**Files:** `PROJECT/Support/ScenarioState.cs`
+
+**DoD:** holds the response of every one of the 22 request steps, the entities created during the
+scenario, and the `ResourceTracker`. Resolved through Reqnroll's DI, one instance per scenario.
+
+In BDD the chain "create an owner → remember `ownerId` → use it in the next step" cannot live in a
+local variable, because the steps are different methods. This class is that memory.
+
+### S10 — TestDataProvider
+
+**Files:** `PROJECT/TestData/TestDataProvider.cs`, `PROJECT/TestData/Cases/OwnerCase.cs`,
+`PetCase.cs`, `VisitCase.cs`, `PetTypeCase.cs`
+
+**DoD:** `For<T>()` resolves the JSON block using the file named after the feature and the key
+taken from the scenario's `@AC-Fxx-yy` tag via `ScenarioContext`. Never a hand-written string key.
+
+Reqnroll's generated test-method names are mangled, which is why the tag — not the method name — is
+the stable key (D-15).
+
+### S11 — BDD wiring
+
+**Files:** `PROJECT/Hooks/ScenarioHooks.cs`, `PROJECT/AssemblyInfo.cs`
+
+**DoD:** `[BeforeTestRun]` waits for readiness; `[BeforeScenario(Order = 0)]` registers the four
+services and `ApiClient.Shared` in `IObjectContainer`; `[AfterScenario]` calls
+`ResourceTracker.Drain()`; `AssemblyInfo.cs` carries `[assembly: NonParallelizable]`.
+
+Parallel execution is forbidden (§10.7): the tests share one database and assertions on collection
+counts would become non-deterministic.
+
+### S12 — The 22 request steps
+
+**Files:** `PROJECT/StepDefinitions/OwnerSteps.cs` (8 steps), `PetSteps.cs` (4),
+`VisitSteps.cs` (6), `PetTypeSteps.cs` (4)
+
+**DoD:** one step per route of §7 — 8 + 4 + 6 + 4 = 22. Each step issues its request, calls
+`EnsureStatus` for the expected code, and stores the typed response in `ScenarioState`.
+
+These steps contain **nothing from any AC** — they derive from the contract, which is exactly why
+they belong to stage 0 (D-13). Grouping is by domain, not by flow, so reuse across flows is natural.
+Sentences are in domain language: `the owner details are opened`, not `GET owners by id`.
+
+### S13 — Feature skeletons
+
+**Files:** `PROJECT/Features/F01-owner-lifecycle.feature`,
+`F02-owner-pet-lifecycle.feature`, `F03-pet-visit-flow.feature`
+
+**DoD:** each file has a `Feature:` header, the flow tag (`@F01`/`@F02`/`@F03`) and a short
+description taken from the flow's "What the flow verifies" section. **No scenarios yet** — stage 1
+appends those, one per iteration.
+
+### S14 — Smoke suite
+
+**Files:** `PROJECT/Tests/Smoke/FrameworkSmokeTests.cs`, `PROJECT/Data/FrameworkSmokeTests.json`
+
+**DoD:** three plain NUnit tests, all green. They are **not** AC tests, carry no AC id and never
+appear in the traceability — they prove the three mechanisms all 20 scenarios depend on:
+
+| Test | What it proves |
+|---|---|
+| `Smoke_full_chain_through_services` | `GET /pettypes` → `POST /owners` → `POST /owners/{id}/pets` → `POST .../visits`, then read every entity back |
+| `Smoke_tracker_cleans_up_in_order` | drain order, `404` swallowed, second drain safe |
+| `Smoke_data_resolves_by_method_name` | the provider finds its block in `Data/FrameworkSmokeTests.json` |
+
+---
+
+## Open questions
+
+Rows moved to `blocked` record their question here, with the task id and one sentence. The runner prints
+this section when it stops on a blocked row, so a question written anywhere else is a question nobody
+sees. Empty means nothing is blocked.
+
+_None._

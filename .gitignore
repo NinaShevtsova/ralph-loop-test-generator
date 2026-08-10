@@ -1,0 +1,26 @@
+node_modules/
+
+# Loop runtime state — self-report and generated inventories, never committed
+loop/JOURNAL.md
+loop/STEPS.md
+loop/verdicts/*
+!loop/verdicts/.gitkeep
+
+# The runner writes the tracker to a temp file and renames it into place. It cleans up after a failed
+# rename itself; this is for the case no `catch` can reach — the process dying between the two. Left
+# behind and untracked, it makes the NEXT run refuse to start with "working tree is dirty", pointing
+# at a file the operator never created.
+loop/trackers/*.tmp
+
+# .NET build output
+framework/**/bin/
+framework/**/obj/
+framework/**/TestResults/
+
+# Toolchain output that lands OUTSIDE bin/obj, and so inside the directories the runner watches for
+# work an agent failed to commit. `packages.lock.json` appears beside the csproj when a machine-level
+# Directory.Build.props sets RestorePackagesWithLockFile; Reqnroll's *.feature.cs lands beside the
+# feature files rather than in obj/ under one configuration — measured, that one is inside the fenced
+# Features/ directory. Generated code should not be committed in any case.
+framework/**/packages.lock.json
+framework/**/*.feature.cs
