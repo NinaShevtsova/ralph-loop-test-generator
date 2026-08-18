@@ -67,6 +67,7 @@ always returns the real type name from the directory. That is why assertions com
 | `GET /visits/{visitId}` | `200`, the visit with its `petId`, `date`, `description`; `404` with no body if the visit does not exist |
 | `GET /visits` | `200`, an array of all visits in the clinic |
 | `POST /pettypes` | `201`, the body contains the pet type with an assigned `id` |
+| `GET /pettypes` | `200` and an array of pet types; the first element is taken as a whole per the common precondition |
 | `GET /pettypes/{petTypeId}` | `200`, the pet type with its `id` and `name`; `404` with no body if the type does not exist |
 | `POST /owners/{ownerId}/pets` with a non-existent `ownerId` | `404` **with no body** |
 
