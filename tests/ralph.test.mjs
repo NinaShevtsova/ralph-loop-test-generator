@@ -27,6 +27,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -658,5 +659,48 @@ test('the runner refuses an unborn HEAD instead of reading it as an unnamed bran
   assert.match(run.out, /cannot read the current branch/);
   assert.match(run.out, /fatal:/, 'the git reason must survive, not the word HEAD git prints to stdout');
   assert.match(run.out, /no commits yet/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ── Telemetry: the one artefact of a run that is committed ───────────────────────────
+
+test('a run writes a committed summary with a row per iteration and totals at the end', { skip: !WIN }, () => {
+  // The summary is what makes "did that rubric edit help" answerable, and it is written by the RUNNER
+  // as the run happens — so nothing but running the runner establishes that it is written at all. The
+  // unit tests cover the shape of the rows; this covers the fact that they reach disk.
+  const { dir, control } = buildClone('ralph-summary-');
+  writeFileSync(join(control, 'agent.mjs'), AGENT_GOOD);
+
+  const run = runRalph(dir, { env: { MAX_ITER: '1' }, args: ['--stage', 'tests', '--flow', 'F-01'] });
+  assert.match(run.out, /verdict PASS for AC-F01-01/, run.out.slice(-2000));
+
+  const runsDir = join(dir, 'loop', 'runs');
+  const summaries = readdirSync(runsDir).filter((name) => name.endsWith('.md') && name !== 'README.md');
+  assert.equal(summaries.length, 1, `expected one summary, got ${summaries.join(', ')}`);
+
+  const summary = readFileSync(join(runsDir, summaries[0]), 'utf8');
+  assert.match(summary, /stage `tests`, slice `F-01`/);
+  assert.match(summary, /\| 1 \| AC-F01-01 \| agent \| judged \| PASS \|/, summary);
+  assert.match(summary, /\*\*Ended:\*\*/, 'the totals block is missing');
+  assert.match(summary, /iterations: 1/);
+
+  // Named after the run, so two runs of the same slice can be diffed against each other rather than
+  // one overwriting the other.
+  assert.match(summaries[0], /^\d{4}-\d{2}-\d{2}T[\d-]+-tests-F-01\.md$/, summaries[0]);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('the verdict is archived under a name the next attempt at the same row cannot take', { skip: !WIN }, () => {
+  // `loop/verdicts/<id>.md` must hold the LATEST reply — the next turn reads it — so a rework
+  // overwrites the rejection that explained it. Those rejections are the only real material for a
+  // judge eval, and the loop was producing and destroying them at the same rate.
+  const { dir, control } = buildClone('ralph-archive-');
+  writeFileSync(join(control, 'agent.mjs'), AGENT_GOOD);
+
+  runRalph(dir, { env: { MAX_ITER: '1' }, args: ['--stage', 'tests', '--flow', 'F-01'] });
+
+  const archived = readdirSync(join(dir, 'loop', 'verdicts', 'history'));
+  assert.deepEqual(archived, ['AC-F01-01.001.md']);
+  assert.match(readFileSync(join(dir, 'loop/verdicts/history/AC-F01-01.001.md'), 'utf8'), /VERDICT: PASS/);
   rmSync(dir, { recursive: true, force: true });
 });

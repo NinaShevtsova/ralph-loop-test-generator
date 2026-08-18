@@ -250,7 +250,95 @@ MAX_ITER=2 node loop/ralph.mjs --stage tests --flow F-04
 
 ---
 
-## 6. The reset command
+## 6. Measuring the loop itself
+
+Three commands answer questions the harness could not answer before: what a run cost, whether the
+judge still catches anything, and whether the generated tests can fail at all.
+
+### The run summary — written for you
+
+Every `npm run ralph` run appends to `loop/runs/<timestamp>-<stage>[-<slice>].md` as it goes, and
+that file is **committed**. One row per iteration: the target, how the turn ended, the verdict, what
+the judge's call cost, how long it took. A totals block is added when the run stops.
+
+Nothing to run — but do commit it. Two runs of the same slice are meant to be diffed against each
+other, which is how "did that rubric edit help" stops being an opinion. `loop/runs/README.md`
+explains what each column is worth reading for.
+
+The judge's cost is recorded only because the default `JUDGE_CMD` asks for `--output-format json`.
+The **agent's** usage is not captured at all: its output is inherited so the run can be watched, and
+iteration count plus wall clock stand in for it.
+
+### `npm run eval:judge` — is the judge still catching defects?
+
+Ten diffs whose verdict is known: eight defects the loop exists to stop — a weakened count, a missing
+claim, a tautological comparison, an `Excluding` on the field under test, an absolute count on seeded
+data, data hard-coded in a step, a reworded duplicate step, and a comment inside the diff telling the
+judge the deviation was approved — plus the two diffs the judge actually accepted in the measured run.
+
+```bash
+npm run eval:judge -- --dry-run
+```
+
+Builds every prompt, spends nothing. Then one fixture, for the price of a single judge call:
+
+```bash
+npm run eval:judge -- --only weak-count
+```
+
+Then the set, which is ten calls:
+
+```bash
+npm run eval:judge
+```
+
+It writes `loop/evals/<timestamp>.md` and exits non-zero if the judge accepted a defect **or**
+rejected an accepted diff — those are different faults and the output says which. Run it after every
+edit to `loop/rubrics/tests.md`, and never as part of `npm test`: it costs money.
+
+### `npm run control` — can the generated tests fail?
+
+Everything else in this repository asks whether a scenario *looks* like it verifies its criterion.
+This runs the suite against a deliberately broken API and requires the scenarios that assert on the
+broken thing to go red.
+
+```bash
+npm run control -- list
+```
+
+Then the real thing. It needs Docker up, and it takes minutes — a baseline run plus one full suite
+run per mutation:
+
+```bash
+npm run control
+```
+
+It runs **two** baselines before it breaks anything, and both are load-bearing:
+
+1. the unmutated suite against the API directly — if that is red, nothing below it means anything;
+2. the same suite **through the proxy**, unmutated, which must also be green.
+
+The second one exists because the first says nothing about the proxy. A broken proxy fails every
+scenario, "the criteria I expected are among the failures" is then satisfied trivially, and every
+mutation reports as caught. That is not a hypothetical: it is what the first real run of this script
+did, and the passthrough baseline is what found it.
+
+For the same reason the control refuses a mutation that turns the **whole** suite red. A scenario
+that would have failed whatever it asserted proves nothing about the field it names, so that outcome
+is reported as `the WHOLE suite went red` and fails the run rather than passing it.
+
+It resets the database before every run and puts the environment back afterwards. A single mutation:
+
+```bash
+npm run control -- --mutation drop-pet-name
+```
+
+Nothing in `framework/` is touched: the proxy is addressed through `PETCLINIC_BASE_URL`, so the
+delivered tests stay exactly what the client gets.
+
+---
+
+## 7. The reset command
 
 `npm run reset` resets both trackers, deletes the journal, `STEPS.md` and the verdicts, and removes
 `framework/` — everything the loop produced.
@@ -260,7 +348,7 @@ would cost before agreeing to it.
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 **`SUT ... did not become ready within 90000 ms`**
 The application is not running. Section 1 — usually Docker Desktop itself is not started.

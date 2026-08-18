@@ -14,6 +14,8 @@
     "check:scaffold": "node scripts/check-scaffold.mjs",
     "check:tests": "node scripts/check-tests.mjs",
     "check:spec": "node .claude/skills/spec-builder/check-spec.mjs",
+    "eval:judge": "node scripts/eval-judge.mjs",
+    "control": "node scripts/mutation-control.mjs",
     "steps": "node scripts/steps-inventory.mjs",
     "api:build": "dotnet build framework/ApiTests.sln",
     "api:test": "dotnet test framework/ApiTests.sln",

@@ -46,8 +46,21 @@ export const STAGES = {
 // D-17: the agent's per-iteration job is narrow and mechanical, so Sonnet is the default; the judge
 // needs real judgement and is called once per iteration on a small input, so Opus.
 // `--permission-mode plan` is what makes the judge structurally read-only.
-const DEFAULT_AGENT_CMD = 'claude -p --model sonnet --permission-mode auto';
-const DEFAULT_JUDGE_CMD = 'claude -p --model opus --permission-mode plan --output-format text';
+//
+// The model IDS, not the aliases `sonnet` and `opus`. An alias floats: the same command a month later
+// is a different generator AND a different grader, both changed at once and neither announced. Every
+// number in `loop/runs/` is then a measurement of an unknown, and the whole reason those files are
+// committed — comparing this run against the last one — quietly stops holding. An operator who wants
+// the newest model overrides AGENT_CMD / JUDGE_CMD, which is a decision with a date on it rather than
+// a drift. Pinned on 2026-08-18, the day the telemetry that depends on them was added.
+//
+// `--output-format json`, not `text`, and that is what makes the judge's cost recordable at all: the
+// envelope carries `usage` and `total_cost_usd` beside the verdict. `loop/telemetry.mjs` unwraps it
+// and falls back to raw text for any JUDGE_CMD that does not speak it, so the two pluggable tools
+// this repository documents keep working unchanged.
+const DEFAULT_AGENT_CMD = 'claude -p --model claude-sonnet-5 --permission-mode auto';
+const DEFAULT_JUDGE_CMD =
+  'claude -p --model claude-opus-5 --permission-mode plan --output-format json';
 
 /** Reads the runner's flags. Never throws — validation is the runner's job, with better messages. */
 export function parseArgs(argv) {

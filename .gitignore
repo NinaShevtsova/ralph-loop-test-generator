@@ -1,6 +1,14 @@
 node_modules/
 
-# Loop runtime state — self-report and generated inventories, never committed
+# Loop runtime state — self-report and generated inventories, never committed.
+#
+# `loop/verdicts/*` covers `history/` too, which is where every verdict is archived under its
+# iteration number so a rework cannot overwrite the rejection that explained it. Bulky and only ever
+# read by a human building a judge fixture out of it.
+#
+# NOT ignored, and deliberately: `loop/runs/` and `loop/evals/`. Those are the committed record of
+# what a run cost and of whether the judge still catches anything — the whole point of them is to be
+# diffed against the last one.
 loop/JOURNAL.md
 loop/STEPS.md
 loop/verdicts/*

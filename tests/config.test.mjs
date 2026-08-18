@@ -101,9 +101,33 @@ test('stageConfig rejects an unknown stage', () => {
 
 test('stageConfig carries the default agent and judge commands', () => {
   const config = stageConfig('tests', {});
-  assert.match(config.agentCmd, /--model sonnet/);
-  assert.match(config.judgeCmd, /--model opus/);
+  assert.match(config.agentCmd, /--model claude-sonnet-5/);
+  assert.match(config.judgeCmd, /--model claude-opus-5/);
   assert.match(config.judgeCmd, /--permission-mode plan/);
+});
+
+test('the default models are pinned IDS, not floating aliases', () => {
+  // An alias makes the same command a different generator AND a different grader a month later, both
+  // changed at once and neither announced. Every number in `loop/runs/` is then a measurement of an
+  // unknown, and comparing this run against the last one — the whole reason those files are committed
+  // — quietly stops holding. An operator who wants the newest model overrides the env var, which is a
+  // decision with a date on it rather than a drift.
+  const config = stageConfig('tests', {});
+  for (const [name, command] of [['AGENT_CMD', config.agentCmd], ['JUDGE_CMD', config.judgeCmd]]) {
+    const model = /--model\s+(\S+)/.exec(command)?.[1];
+    assert.ok(model, `${name} must name a model`);
+    assert.ok(
+      !['sonnet', 'opus', 'haiku', 'default', 'sonnet[1m]'].includes(model),
+      `${name} names the alias "${model}" — pin the id instead`
+    );
+  }
+});
+
+test('the default judge command asks for the output format its usage is read from', () => {
+  // `loop/telemetry.mjs` unwraps the JSON envelope to get at both the verdict and the cost. With
+  // `--output-format text` the verdict still parses and the cost is simply never recorded — a silent
+  // downgrade to the state this telemetry was added to end.
+  assert.match(stageConfig('tests', {}).judgeCmd, /--output-format json/);
 });
 
 test('stageConfig lets env override both commands', () => {
@@ -120,8 +144,8 @@ test('stageConfig reads an empty command override as absent, not as a command', 
   // expands; `stop()` in the same file has always read one as "use the fallback".
   for (const blank of ['', '   ', '\t\n']) {
     const config = stageConfig('tests', { AGENT_CMD: blank, JUDGE_CMD: blank });
-    assert.match(config.agentCmd, /--model sonnet/, `AGENT_CMD=${JSON.stringify(blank)} must fall back`);
-    assert.match(config.judgeCmd, /--model opus/, `JUDGE_CMD=${JSON.stringify(blank)} must fall back`);
+    assert.match(config.agentCmd, /--model claude-sonnet-5/, `AGENT_CMD=${JSON.stringify(blank)} must fall back`);
+    assert.match(config.judgeCmd, /--model claude-opus-5/, `JUDGE_CMD=${JSON.stringify(blank)} must fall back`);
   }
 });
 

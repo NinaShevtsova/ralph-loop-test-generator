@@ -38,6 +38,21 @@ export const SCAFFOLD_TRACKER = 'loop/trackers/scaffold.md';
 export const TESTS_TRACKER = 'loop/trackers/tests.md';
 export const RUNNER_STATE = [SCAFFOLD_TRACKER, TESTS_TRACKER];
 
+/**
+ * The run summaries, which are COMMITTED and therefore reach the same fence the trackers do.
+ *
+ * A directory rather than a list of exact paths, because the name carries the run's timestamp and no
+ * check can know it in advance. That is a wider exemption than `RUNNER_STATE` and it is kept as
+ * narrow as a prefix can be: `loop/rubrics/`, `loop/verdicts/` and the two prompts stay fenced, and a
+ * turn still has no business committing any of them.
+ *
+ * The runner writes a row here after every iteration and never commits — it contains no `git commit`
+ * at all — so an agent running `git add -A` sweeps the file into its own commit exactly as it already
+ * does with the tracker. Without this, every turn after the first would be refused for touching a
+ * file no agent wrote.
+ */
+export const RUNS_DIR = 'loop/runs/';
+
 /** All three repository-relative, so a caller joins them onto its own root. */
 export const flowDocPath = (group) =>
   `docs/specs/petclinic/flows/${group}-${mustKnow('flowDocPath', group).slice(4)}.md`;

@@ -54,6 +54,14 @@ import {
 import { gateSteps, preGateSteps, runGate } from './gates.mjs';
 import { targetSection, judgePrompt, runAgent, runJudge } from './invoke.mjs';
 import {
+  parseJudgeReply,
+  addUsage,
+  summaryHeader,
+  summaryRow,
+  summaryTotals,
+  summaryPath,
+} from './telemetry.mjs';
+import {
   parseVerdict,
   findings as verdictFindings,
   isWellFormed,
@@ -543,6 +551,7 @@ const basePath = (id) => abs(`loop/verdicts/${id}.base`);
 const stepsPath = (id) => abs(`loop/verdicts/${id}.steps.md`);
 
 const stopRun = (code, reason) => {
+  finishSummary(reason);
   console.log(`\n=== STOP: ${reason} (iterations: ${iteration}) ===`);
   process.exit(code);
 };
@@ -556,6 +565,88 @@ let stagnant = 0;
 let malformedVerdicts = 0;
 let journalOpened = false;
 let activeChild = null;
+
+// ── Telemetry ───────────────────────────────────────────────────────────────────────
+//
+// The run summary is the one artefact of a run that is COMMITTED. The journal is the agent's
+// self-report and gitignored; the verdicts are bulky and gitignored; the tracker records where the
+// run ended but nothing about how it got there. So until this file existed, the answer to "did that
+// rubric edit make the loop better or worse" was an opinion — the previous run's rejections had
+// already been overwritten by the reworks that fixed them.
+//
+// Rows are appended AS THEY HAPPEN rather than collected and written at the end. A run that is
+// Ctrl-C'd, crashes, or hits a `die()` is exactly the run whose trace is most worth having, and the
+// totals block simply does not appear for it.
+const runStartedAt = new Date().toISOString();
+const runStartedMs = Date.now();
+const SUMMARY = abs(summaryPath(runStartedAt, config.stage, args.flow));
+let summaryOpened = false;
+let summaryFinished = false;
+const summaryOutcomes = [];
+let judgeUsageTotal = null;
+
+const openSummary = () => {
+  if (summaryOpened) return;
+  summaryOpened = true;
+  mkdirSync(dirname(SUMMARY), { recursive: true });
+  appendFileSync(
+    SUMMARY,
+    summaryHeader({
+      startedAt: runStartedAt,
+      stage: config.stage,
+      flow: args.flow,
+      branch: branch(),
+      agentCmd: config.agentCmd,
+      judgeCmd: config.judgeCmd,
+      stops: config,
+    })
+  );
+};
+
+/**
+ * One iteration recorded. Never throws: a summary that cannot be written must not be able to end a
+ * run that is otherwise healthy — this file informs the next decision, it does not gate this one.
+ */
+const record = (entry) => {
+  try {
+    openSummary();
+    summaryOutcomes.push(entry.outcome);
+    judgeUsageTotal = addUsage(judgeUsageTotal, entry.usage ?? null);
+    appendFileSync(SUMMARY, `${summaryRow(entry)}\n`);
+  } catch (error) {
+    console.error(`ralph: could not write the run summary — ${error.message}`);
+  }
+};
+
+/** The totals block. Called from every exit that can follow at least one iteration. */
+function finishSummary(reason) {
+  if (!summaryOpened || summaryFinished) return;
+  summaryFinished = true;
+  try {
+    appendFileSync(
+      SUMMARY,
+      summaryTotals({
+        iterations: iteration,
+        rows: summaryOutcomes,
+        usage: judgeUsageTotal,
+        wallSeconds: (Date.now() - runStartedMs) / 1000,
+        reason,
+        // Through the validated read, like every other count in this runner. A tracker that has gone
+        // unreadable stops the run anyway; it must not do it from inside the summary writer.
+        counts: (() => {
+          try {
+            return counts();
+          } catch {
+            return null;
+          }
+        })(),
+      })
+    );
+    console.log(`ralph: run summary in ${summaryPath(runStartedAt, config.stage, args.flow)}`);
+  } catch (error) {
+    console.error(`ralph: could not finish the run summary — ${error.message}`);
+  }
+}
 
 /**
  * The run header, written on the first real iteration rather than before the loop.
@@ -596,6 +687,9 @@ process.on('SIGINT', () => {
     }
     console.log('Stopped the process it was running.');
   }
+  // The interrupted run is the one whose trace is most worth keeping, and the rows are already on
+  // disk — this only closes them off with what the run managed to spend.
+  finishSummary('interrupted (SIGINT)');
   console.log('State is on disk — see git status.');
   process.exit(130);
 });
@@ -615,6 +709,7 @@ for (;;) {
   }
   if (target.phase === 'blocked') {
     reportBlocked(target.row.id);
+    finishSummary(`blocked on ${target.row.id} — a human must answer`);
     process.exit(4);
   }
 
@@ -635,6 +730,10 @@ for (;;) {
   // The tracker exactly as the agent found it, for the same reason and with the same null. No agent
   // runs on the recovery path, so there is no window in which the file could have been rewritten.
   let trackerBeforeTurn = null;
+
+  // Wall clock for the turn. The only cost signal there is for the agent — its stdio is inherited so
+  // a human can watch it, which rules out `--output-format json` and the usage that comes with it.
+  const iterationStartedMs = Date.now();
 
   // ── The agent turn (skipped when recovering a row left in `review`) ───────────────
   if (phase === 'agent') {
@@ -902,6 +1001,18 @@ for (;;) {
 
   if (failure) {
     console.error(`ralph: ${failure}`);
+    // Recorded before the row is written, so a `die()` inside `setRow` still leaves the reason on
+    // disk. `tampering` and a red gate are separated in the OUTCOME column because they are different
+    // faults with different fixes, and a summary that called both "failed" would need the note column
+    // read to tell them apart.
+    record({
+      iteration,
+      row: row.id,
+      phase,
+      outcome: tampering ? 'refused' : 'gate red',
+      seconds: (Date.now() - iterationStartedMs) / 1000,
+      note: tampering ? failure : `red at ${gate.failedAt}`,
+    });
     if (parseRows(tracker()).find((r) => r.id === row.id)?.status !== 'blocked') {
       /*
        * The note design §6.2 Step 3 requires, written where the NEXT turn will actually read it.
@@ -1013,6 +1124,18 @@ for (;;) {
   });
   activeChild = null;
 
+  /*
+   * The envelope unwrapped, once, here — and `judgeText` is what every line below reads.
+   *
+   * `JUDGE_CMD` defaults to `--output-format json` so the call's usage can be recorded, and the
+   * verdict is then a FIELD of a JSON object rather than the first line of the output. Handing
+   * `parseVerdict` the raw envelope would have it read `{` and resolve to REJECT — every verdict,
+   * forever, with the malformed-verdict counter stopping the run on the second one. `parseJudgeReply`
+   * returns the text unchanged for any tool that does not speak the envelope, so nothing here depends
+   * on which tool JUDGE_CMD names.
+   */
+  const { text: judgeText, usage: judgeUsage } = parseJudgeReply(judged.out);
+
   // A judge that changed anything was not read-only, and its verdict cannot be trusted.
   const headAfter = gitTry(ROOT, 'rev-parse', 'HEAD');
   const statusAfter = gitTry(ROOT, 'status', '--porcelain', '--untracked-files=normal');
@@ -1026,7 +1149,27 @@ for (;;) {
   // `|| ...`: when the judge could not be spawned at all, `out` is empty, and a zero-byte file records
   // nothing. The reason belongs in the artefact, not only in the console.
   mkdirSync(dirname(verdictPath(row.id)), { recursive: true });
-  writeFileSync(verdictPath(row.id), judged.out || `<the judge produced no output — ${judged.why}>\n`);
+  const verdictText = judgeText || `<the judge produced no output — ${judged.why}>\n`;
+  writeFileSync(verdictPath(row.id), verdictText);
+
+  /*
+   * The same text again, under a name no later iteration can take.
+   *
+   * `loop/verdicts/<id>.md` is what the next turn reads, so it must always hold the LATEST reply —
+   * which means the rework that fixes a scenario overwrites the rejection that explained it. Those
+   * rejections are the only real material for a judge eval, and this loop was producing and
+   * destroying them at the same rate. Gitignored like the rest of `loop/verdicts/`: bulky, and the
+   * committed record of what happened is the run summary.
+   */
+  const history = abs(`loop/verdicts/history/${row.id}.${String(iteration).padStart(3, '0')}.md`);
+  try {
+    mkdirSync(dirname(history), { recursive: true });
+    writeFileSync(history, verdictText);
+  } catch (error) {
+    // Never fatal. This copy exists to be mined later; a run must not end because an archive write
+    // failed while the verdict the loop acts on was written fine one line above.
+    console.error(`ralph: could not archive the verdict — ${error.message}`);
+  }
 
   if (!headAfter.ok || !statusAfter.ok) {
     stopRun(2, `cannot verify the judge left the repository untouched: ${headAfter.error || statusAfter.error}`);
@@ -1047,11 +1190,11 @@ for (;;) {
   //
   // Reachable in practice: the wrong `--output-format`, or a judge writing to stderr. Measured —
   // `runJudge` returns `{ok: true, out: ''}` for both.
-  if (judged.out.trim() === '') {
+  if (judgeText.trim() === '') {
     stopRun(2, `the judge "${config.judgeCmd}" exited 0 and printed nothing — check JUDGE_CMD and its output format`);
   }
 
-  const verdict = parseVerdict(judged.out);
+  const verdict = parseVerdict(judgeText);
 
   // Written before the malformed check below. Otherwise a stop there left the row in `review` while
   // the failed-turn path writes `rework` — two paths disagreeing on what an ungraded row looks like.
@@ -1061,20 +1204,33 @@ for (;;) {
     // The question goes into the tracker, where both trackers have always said the runner puts it and
     // where the operator is about to be sent to look. Without this the run ended by printing
     // "a human must answer" above a section still reading `_None._` — measured.
-    recordQuestion(row.id, verdictFindings(judged.out));
+    recordQuestion(row.id, verdictFindings(judgeText));
   } else setRow(row.id, 'rework');
 
   console.log(`ralph: verdict ${verdict} for ${row.id}`);
+
+  // The note is the judge's FIRST finding, not all of them: the summary is a file to scan, and the
+  // whole reply is one directory away under a name this row's iteration number makes unambiguous.
+  record({
+    iteration,
+    row: row.id,
+    phase,
+    outcome: 'judged',
+    verdict,
+    usage: judgeUsage,
+    seconds: (Date.now() - iterationStartedMs) / 1000,
+    note: verdict === 'PASS' ? '' : verdictFindings(judgeText),
+  });
 
   // A malformed verdict resolves to REJECT, which is right — but it must not LOOK like an honest
   // rejection. A judge that decorates its first line (a code fence, `**bold**`, a preamble) has its
   // real verdict thrown away, and if it does so consistently the loop grinds to its ceiling emitting
   // rework after rework with nothing wrong with the work. The parser stays strict; this says so.
-  if (!isWellFormed(judged.out)) {
+  if (!isWellFormed(judgeText)) {
     malformedVerdicts += 1;
     console.error(
       `ralph: the judge's first line is not a verdict (${malformedVerdicts} in a row) — read as REJECT.\n` +
-        `      first line: ${JSON.stringify((judged.out ?? '').split('\n').find((l) => l.trim()) ?? '')}\n` +
+        `      first line: ${JSON.stringify((judgeText ?? '').split('\n').find((l) => l.trim()) ?? '')}\n` +
         '      it must be plain `VERDICT: PASS|REJECT|SPEC_UNCLEAR` with no fence, bold or preamble.'
     );
     // Two in a row is a broken judge, not two bad scenarios. That is a configuration fault: the

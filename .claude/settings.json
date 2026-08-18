@@ -1,4 +1,20 @@
 {
+  "permissions": {
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git reset:*)",
+      "Bash(git rebase:*)",
+      "Bash(git clean:*)",
+      "Edit(docs/specs/**)",
+      "Write(docs/specs/**)",
+      "Edit(loop/rubrics/**)",
+      "Write(loop/rubrics/**)",
+      "Edit(loop/PROMPT.*.md)",
+      "Write(loop/PROMPT.*.md)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {

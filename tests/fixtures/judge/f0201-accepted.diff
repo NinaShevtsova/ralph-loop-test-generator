@@ -1,0 +1,172 @@
+diff --git a/framework/src/PetClinic.ApiTests/Data/F02-owner-pet-lifecycle.json b/framework/src/PetClinic.ApiTests/Data/F02-owner-pet-lifecycle.json
+new file mode 100644
+index 0000000..9cd7a7c
+--- /dev/null
++++ b/framework/src/PetClinic.ApiTests/Data/F02-owner-pet-lifecycle.json
+@@ -0,0 +1,7 @@
++{
++  "AC-F02-01": {
++    "owner": { "firstName": "Bohdan", "lastName": "Tkachenko",
++               "address": "27 Lesi Ukrainky Street", "city": "Odesa", "telephone": "0687654321" },
++    "pet": { "name": "Pet", "birthDate": "2020-05-14" }
++  }
++}
+diff --git a/framework/src/PetClinic.ApiTests/Features/F02-owner-pet-lifecycle.feature b/framework/src/PetClinic.ApiTests/Features/F02-owner-pet-lifecycle.feature
+index 6b05db4..1ffa5d4 100644
+--- a/framework/src/PetClinic.ApiTests/Features/F02-owner-pet-lifecycle.feature
++++ b/framework/src/PetClinic.ApiTests/Features/F02-owner-pet-lifecycle.feature
+@@ -6,3 +6,17 @@ Feature: F-02 Owner's pet: adding, changing, deleting
+   details. A pet can be changed by two different requests, but deleted only directly. The flow
+   verifies that all these places show one and the same record rather than independent copies,
+   and that deleting a pet does not affect the owner.
++
++  @AC-F02-01 @US-02
++  Scenario: AC-F02-01 an added pet is visible in the owner details and in its own details with the same data
++    Given an owner is registered
++    When the pet types directory is requested
++    Then the directory returns at least one pet type
++    When a pet is added to the owner
++    Then the created pet has an assigned id, the submitted values and a link to the owner
++    When the owner details are opened
++    Then the owner details show one pet matching the added pet's data
++    When the pet details are opened
++    Then the pet details match the added pet's data and the pet type from the directory
++    When the pet is opened from the owner details
++    Then the pet from the owner details matches the pet's own details in every field
+diff --git a/framework/src/PetClinic.ApiTests/StepDefinitions/OwnerSteps.cs b/framework/src/PetClinic.ApiTests/StepDefinitions/OwnerSteps.cs
+index afb555a..6518672 100644
+--- a/framework/src/PetClinic.ApiTests/StepDefinitions/OwnerSteps.cs
++++ b/framework/src/PetClinic.ApiTests/StepDefinitions/OwnerSteps.cs
+@@ -381,6 +381,42 @@ public sealed class OwnerSteps
+         _state.SetEntity("PetUpdateFromOwner", updated);
+     }
+ 
++    // AC-F02-01, step 3 (flows/F-02-owner-pet-lifecycle.md:111-114): "exactly one element" is the
++    // same duplicate-style check as the owners list assertions in AC-F01-01/02; it also compares
++    // name, birthDate and type.id against the pet's own creation response rather than Given, so a
++    // bug that only broke the nested representation would surface here.
++    [Then("the owner details show one pet matching the added pet's data")]
++    public void TheOwnerDetailsShowOnePetMatchingTheAddedPetsData()
++    {
++        var pet = _state.GetResponse<Pet>("Pet").Body!;
++        var details = _state.GetResponse<Owner>("OwnerDetails").Body!;
++
++        var pets = details.Pets.Where(p => p.Id == pet.Id).ToList();
++        pets.Should().ContainSingle(
++            because: $"owner id {details.Id}'s details should show exactly one pet with id {pet.Id}");
++        pets[0].Name.Should().Be(pet.Name,
++            because: $"pet id {pet.Id} inside the owner details should show its name");
++        pets[0].BirthDate.Should().Be(pet.BirthDate,
++            because: $"pet id {pet.Id} inside the owner details should show its birth date");
++        pets[0].Type.Id.Should().Be(pet.Type.Id,
++            because: $"pet id {pet.Id} inside the owner details should show its pet type");
++    }
++
++    // AC-F02-01, step 5 (flows/F-02-owner-pet-lifecycle.md:121-124): "matches ... in every field" is
++    // a whole-object comparison, not a field-by-field one -- the same shape as "the owner details
++    // match the registration response" above, this time proving the pet's own details and the
++    // representation nested under the owner are one record, not two independent copies.
++    [Then("the pet from the owner details matches the pet's own details in every field")]
++    public void ThePetFromTheOwnerDetailsMatchesThePetsOwnDetailsInEveryField()
++    {
++        var ownerId = _state.GetResponse<Owner>("Owner").Body!.Id!.Value;
++        var petDetails = _state.GetResponse<Pet>("PetDetails").Body!;
++        var petFromOwner = _state.GetResponse<Pet>("PetFromOwner").Body!;
++
++        petFromOwner.Should().BeEquivalentTo(petDetails,
++            because: $"the GET /owners/{ownerId}/pets/{petDetails.Id} response should fully match the GET /pets/{petDetails.Id} response for pet id {petDetails.Id}");
++    }
++
+     // The "PetType" key exists only when "a new pet type is added to the directory" already ran
+     // in this scenario (AC-F01-04, AC-F02-10) -- its absence is the normal case, not an error, so
+     // the fallback to the shared directory is a catch, not a precondition check on state we don't
+diff --git a/framework/src/PetClinic.ApiTests/StepDefinitions/PetSteps.cs b/framework/src/PetClinic.ApiTests/StepDefinitions/PetSteps.cs
+index ea8536d..bbf0fc5 100644
+--- a/framework/src/PetClinic.ApiTests/StepDefinitions/PetSteps.cs
++++ b/framework/src/PetClinic.ApiTests/StepDefinitions/PetSteps.cs
+@@ -23,6 +23,55 @@ public sealed class PetSteps
+         _state = state;
+     }
+ 
++    // AC-F02-01, step 2 (flows/F-02-owner-pet-lifecycle.md:106-109): the assigned id, the submitted
++    // name/birthDate and the resolved pet type are compared against what was submitted, while
++    // ownerId is compared against the owner from Given -- the request itself lives in OwnerSteps
++    // because a pet can only be created through the nested owner route (§7), but the response shape
++    // is a Pet fact, not an Owner one.
++    [Then("the created pet has an assigned id, the submitted values and a link to the owner")]
++    public void TheCreatedPetHasAnAssignedIdTheSubmittedValuesAndALinkToTheOwner()
++    {
++        var ownerId = _state.GetResponse<Owner>("Owner").Body!.Id!.Value;
++        var submitted = _state.GetEntity<Pet>("Pet");
++        var pet = _state.GetResponse<Pet>("Pet").Body!;
++
++        pet.Id.Should().NotBeNull(
++            because: $"the POST /owners/{ownerId}/pets response should carry an assigned id");
++        pet.Name.Should().Be(submitted.Name,
++            because: $"pet id {pet.Id} should keep the submitted name");
++        pet.BirthDate.Should().Be(submitted.BirthDate,
++            because: $"pet id {pet.Id} should keep the submitted birth date");
++        pet.Type.Id.Should().Be(submitted.Type.Id,
++            because: $"pet id {pet.Id} should keep the submitted pet type");
++        pet.OwnerId.Should().Be(ownerId,
++            because: $"pet id {pet.Id} should be linked to owner id {ownerId}");
++    }
++
++    // AC-F02-01, step 4 (flows/F-02-owner-pet-lifecycle.md:116-119): name and birthDate are compared
++    // against the creation response, while type.id and type.name are compared against the directory
++    // entry from step 1 -- the AC compares the type against the directory rather than against the
++    // creation response on purpose, since the type name is resolved server-side and is not among the
++    // submitted values (§11).
++    [Then("the pet details match the added pet's data and the pet type from the directory")]
++    public void ThePetDetailsMatchTheAddedPetsDataAndThePetTypeFromTheDirectory()
++    {
++        var ownerId = _state.GetResponse<Owner>("Owner").Body!.Id!.Value;
++        var created = _state.GetResponse<Pet>("Pet").Body!;
++        var petType = _state.GetResponse<List<PetType>>("PetTypes").Body!.First();
++        var details = _state.GetResponse<Pet>("PetDetails").Body!;
++
++        details.Name.Should().Be(created.Name,
++            because: $"pet id {details.Id}'s own details should match the name from its creation response");
++        details.BirthDate.Should().Be(created.BirthDate,
++            because: $"pet id {details.Id}'s own details should match the birth date from its creation response");
++        details.Type.Id.Should().Be(petType.Id,
++            because: $"pet id {details.Id}'s own details should show the pet type id from the directory");
++        details.Type.Name.Should().Be(petType.Name,
++            because: $"pet id {details.Id}'s own details should show the pet type name from the directory");
++        details.OwnerId.Should().Be(ownerId,
++            because: $"pet id {details.Id}'s own details should be linked to owner id {ownerId}");
++    }
++
+     [When("the pets list is requested")]
+     public async Task ThePetsListIsRequested()
+     {
+diff --git a/framework/src/PetClinic.ApiTests/StepDefinitions/PetTypeSteps.cs b/framework/src/PetClinic.ApiTests/StepDefinitions/PetTypeSteps.cs
+index e3e2585..8823d2b 100644
+--- a/framework/src/PetClinic.ApiTests/StepDefinitions/PetTypeSteps.cs
++++ b/framework/src/PetClinic.ApiTests/StepDefinitions/PetTypeSteps.cs
+@@ -1,4 +1,5 @@
+ using System.Net;
++using FluentAssertions;
+ using Reqnroll;
+ using PetClinic.ApiTests.Http;
+ using PetClinic.ApiTests.Models;
+@@ -57,6 +58,19 @@ public sealed class PetTypeSteps
+         _state.SetResponse("PetTypeDetails", response);
+     }
+ 
++    // AC-F02-01, step 1 (flows/F-02-owner-pet-lifecycle.md:100-103): the array-not-empty check is
++    // what makes the shared setup convention ("take the first element as the type") a safe read
++    // rather than an assumption -- an empty directory would otherwise surface as a null-reference
++    // failure deep inside "a pet is added to the owner" instead of here, at its own source.
++    [Then("the directory returns at least one pet type")]
++    public void TheDirectoryReturnsAtLeastOnePetType()
++    {
++        var petTypes = _state.GetResponse<List<PetType>>("PetTypes").Body!;
++
++        petTypes.Should().NotBeEmpty(
++            because: "GET /pettypes should return at least one pet type for a pet to be created with");
++    }
++
+     [When("the pet type is deleted")]
+     public async Task ThePetTypeIsDeleted()
+     {

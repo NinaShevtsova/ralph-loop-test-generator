@@ -22,7 +22,7 @@
 // Gherkin comment.
 
 
-import { PROJECT, RUNNER_STATE } from './flows.mjs';
+import { PROJECT, RUNNER_STATE, RUNS_DIR } from './flows.mjs';
 
 /** Returns hits for a global regex, with 1-based line numbers. */
 function scan(source, pattern) {
@@ -313,6 +313,12 @@ export function outsideFence(paths) {
     // Exact paths, never a `loop/` prefix: the prompts, the rubrics and the verdicts live there too,
     // and a turn has no business committing any of them.
     if (RUNNER_STATE.includes(normalised)) return false;
+
+    // The run summaries, for the same reason and by the same route: the runner appends a row after
+    // every iteration and never commits, so `git add -A` picks them up. A prefix rather than exact
+    // names because the filename carries the run's start time. `outsideFence` has already refused a
+    // `..` segment above, so this cannot be climbed out of.
+    if (normalised.startsWith(RUNS_DIR)) return false;
 
     if (!normalised.startsWith(PROJECT_PREFIX)) return true;
 
