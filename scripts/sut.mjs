@@ -1,3 +1,19 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// The tests talk to a real application — a demo veterinary-clinic API running in Docker.
+// This script is the remote control for it: start it, wait until it answers, put it back
+// to a clean state, stop it.
+//
+// Resetting before every test run is the load-bearing part. Without it, records left over
+// from the previous run make a test fail for reasons that have nothing to do with the
+// test, and the loop would blame the AI for a dirty database.
+//
+// It does not take "it answered" as proof of a restart, either: the application answering
+// is equally true of one that never restarted. So a reset also checks that the container's
+// start time really moved and that the data really is back to its seeded amounts.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // scripts/sut.mjs — lifecycle of the system under test (Spring PetClinic REST in Docker).
 //
 // Design D-09: the state is reset before every gate run, because only then does a red test

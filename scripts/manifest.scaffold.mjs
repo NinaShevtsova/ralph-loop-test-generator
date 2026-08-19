@@ -1,3 +1,15 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// The packing list for the test framework: every file the first stage must produce, which
+// step creates it, and a rough test of "is this file actually finished".
+//
+// The inspector next door grades against this list. The checks here are deliberately
+// shallow — they catch a file that is missing, empty, or has lost its whole reason for
+// existing, and nothing more. A check that tried to judge code quality would go red on
+// every honest rewrite, and judging quality is the AI grader's job.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // scripts/manifest.scaffold.mjs — the file manifest stage 0 is graded against (design §5.2).
 //
 // The probes are COARSE on purpose. Their job is to catch a file that exists and is empty, or one

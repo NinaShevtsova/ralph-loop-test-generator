@@ -1,3 +1,22 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// This sits the grader down and marks its exam.
+//
+// It takes the ten examples with known answers, sends each one to the real grader exactly
+// as the loop would, and reports how many it got right. Run it after changing the grading
+// rules: it is the only way to tell whether an edit made the grader sharper or blunter,
+// instead of guessing.
+//
+// The grader is given a stripped-down copy of the project as its workspace — the
+// specifications and the rulebook, but not the finished test code. Otherwise it could look
+// up the real, correct version of a deliberately broken example and be confused by the
+// mismatch, and the exam would measure that confusion instead of the rules.
+//
+// It spends real money, so it is never part of the ordinary test run, and there is a
+// --dry-run mode that builds everything and sends nothing.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // scripts/eval-judge.mjs — runs the golden set through the real judge and scores it.
 //
 // The one thing the harness could not answer: did that edit to the rubric make the judge better or

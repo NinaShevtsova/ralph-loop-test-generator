@@ -1,3 +1,22 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// This file writes the run's receipt.
+//
+// While the loop works it records one line per turn — which row, how it ended, what the
+// grader decided, how many tokens that cost, how long it took — and a totals block at the
+// end. Those files are committed, which is the point: the only way to know whether a
+// change to the instructions made the loop better or worse is to compare two runs.
+//
+// It also unwraps the grader's reply. The grader answers with a JSON envelope that carries
+// its verdict AND its token usage, so the verdict has to be lifted out before anything
+// tries to read it as plain text.
+//
+// One number is deliberately missing: what the WORKER cost. Its output is shown live so a
+// human can watch the turn, and that rules out the mode that would report usage. The turn
+// count and the clock stand in for it.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // loop/telemetry.mjs — what a run cost and what it decided, as data.
 //
 // The harness was built so it would not be WRONG. Nothing in it was built so a change to a prompt or

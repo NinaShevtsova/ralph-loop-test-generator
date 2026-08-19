@@ -1,3 +1,19 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// The cheap, mechanical rules that catch a test which LOOKS right and proves nothing.
+//
+// Each rule is a small pattern-matcher looking for one specific bad habit: an id typed
+// straight into the test instead of taken from the API, a sleep used to paper over a
+// timing problem, a test switched off with `Ignore`, a Gherkin construct the conventions
+// forbid, a file changed outside the folders this stage may touch.
+//
+// The point of doing these mechanically is money and reliability: a pattern gives the same
+// answer every time and costs nothing, so the AI grader's attention is left for the things
+// only judgement can settle. Where a pattern cannot be sure, it does not guess — it hands
+// the case to the grader instead.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // scripts/checks.mjs — the deterministic half of the stage-1 gate (design §6.4).
 //
 // Every function here is pure and returns a list of hits: { line, match }. Nothing in this file

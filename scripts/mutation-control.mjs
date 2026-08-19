@@ -1,3 +1,21 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// Everything else in this project asks whether a test LOOKS like it checks something. This
+// script asks whether it actually does — by breaking the application on purpose.
+//
+// It slips a small relay between the tests and the application, quietly damages one field
+// in the answers coming back, and then demands that the tests which check that field turn
+// red. A test suite that stays green while the application is lying is green about
+// nothing, and no amount of reading the code proves otherwise.
+//
+// Two safety rails, both learned the hard way. It first proves the suite is green with the
+// relay in place and nothing broken — otherwise a faulty relay makes every test fail and
+// every deliberate break look "caught". And it refuses to count a break that reddens the
+// WHOLE suite, because a test that would have failed no matter what proves nothing about
+// the field it names.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // scripts/mutation-control.mjs — proof that the generated tests can fail.
 //
 // Everything else in this repository asks whether a scenario LOOKS like it verifies its acceptance

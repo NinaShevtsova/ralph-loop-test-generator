@@ -1,3 +1,16 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// The tests are organised into three "flows" — three user journeys through the API. This
+// file is the single place that knows which flows exist and how to build every file name
+// that belongs to one: its specification document, its feature file, its data file.
+//
+// It exists because the same three formulas used to be written out by hand in five
+// different files. When one of them was fixed, the other four kept their old version, and
+// nothing noticed. Now every caller asks this file instead, and a test checks that nobody
+// has quietly written out a fourth copy.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // flows.mjs — the test project, the flow groups, and every path derived from them.
 //
 // Kept here rather than in loop/config.mjs because scripts/ must not import from loop/: the gate CLIs

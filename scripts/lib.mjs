@@ -1,3 +1,19 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// The small shared toolbox every check script uses: run a command and report honestly what
+// happened, ask git a question, find the project folder, and print a pass/fail summary the
+// same way everywhere.
+//
+// It is deliberately tiny. These helpers sit underneath the checks that decide whether the
+// AI's work is accepted, and a check nobody can read in a minute is a check that gets
+// switched off the first time it goes red.
+//
+// The recurring theme here is refusing to confuse "it failed" with "there was nothing":
+// a git command that errors must not come back looking like an empty answer, because the
+// checks above would read that as "nothing is wrong".
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // scripts/lib.mjs — the shared minimum for every gate script.
 //
 // Everything here is deliberately tiny. A gate must be readable in a minute: if understanding

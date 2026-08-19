@@ -1,3 +1,19 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// The "start over" button. It puts everything back to the state a freshly downloaded copy
+// of the project would be in: every row of the to-do list unfinished, the generated code
+// deleted, the notes and verdicts from previous runs cleared.
+//
+// It exists because starting over is not the same as downloading the project again. The
+// to-do list is stored in git, so a rerun would inherit the last run's finished rows —
+// while the notes are NOT in git, so they survive and get fed to the next run's AI. Without
+// this script a rerun would begin with the previous attempt's memory and none of its code.
+//
+// Nothing happens until you pass --yes. Run it without that and it only prints what it
+// WOULD delete, because what it deletes is the loop's entire output.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // scripts/reset-run.mjs — put the loop back to the state a fresh clone would start from.
 //
 // The harness had no way to start over, and "start over" is not the same as "clone again": the

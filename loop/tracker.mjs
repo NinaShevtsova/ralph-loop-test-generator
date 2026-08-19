@@ -1,3 +1,20 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// The loop keeps its to-do list as an ordinary Markdown table — one row per piece of work,
+// with a status word in the last column. This file is the only thing allowed to read and
+// change that table.
+//
+// Two jobs matter most. First, it refuses to trust a table that looks damaged: if the AI
+// writes `**done**` instead of `done`, that row becomes invisible, and a loop that cannot
+// see a row will happily report the work finished when it never happened. Second, it
+// compares the table before and after every turn and UNDOES any status the worker had no
+// right to write — above all `done`, which only the loop may set, and only after the
+// grader approves.
+//
+// That is what keeps the progress score out of the hands of the thing being scored.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // loop/tracker.mjs — pure reading and mutation of a tracker table.
 //
 // The loop's progress metric is the number of `done` rows here, and `done` is written by the

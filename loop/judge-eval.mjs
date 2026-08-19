@@ -1,3 +1,20 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// This is the grader's exam paper.
+//
+// It holds ten example code changes whose correct grade is already known: eight contain a
+// deliberate defect of a kind this loop exists to stop, and two are real work the grader
+// accepted in an earlier run. Feed them to the grader and you learn whether it still
+// catches problems — and, just as importantly, whether it still accepts good work. A
+// grader that rejects everything would score perfectly on defects alone.
+//
+// The eight defective ones are not stored as separate copies. Each is described as "the
+// accepted change, with this one line replaced by that one". If the original ever changes
+// so that a replacement no longer fits, the tests say so loudly — instead of quietly
+// grading the grader against a defect that is no longer there.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // loop/judge-eval.mjs — the golden set the judge is measured against, as data.
 //
 // The rubric is 27 items of prose that one model reads, and `tests/rubrics.test.mjs` checks it the

@@ -1,3 +1,23 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// This is the loop itself — the program you start when you want tests generated.
+//
+// It looks at the to-do list, picks the first unfinished row, and asks an AI worker to do
+// that one row. Then it checks the result for itself: it rebuilds the project, resets the
+// test database, runs every test, and runs the automatic file checks. Only if all of that
+// is green does it call a SECOND AI, the grader, and show it the work.
+//
+// If the grader says PASS, the loop marks the row finished and moves to the next one. If
+// not, the row goes back into the queue with the grader's reasons attached, and the next
+// turn starts from those. The loop stops by itself when every row is finished, or when it
+// has spent too many turns, failed too often, or stopped making progress.
+//
+// The important idea: the worker gets a FRESH, EMPTY memory every turn. Everything that
+// has to survive lives on disk — git history, the to-do list, the notes file. So a turn
+// never "remembers" the last one; it reads it.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // ralph.mjs — the blind loop over one stage of this repository.
 //
 // The cycle is deliberately dumb: it feeds ONE prompt to an agent in headless mode over and over

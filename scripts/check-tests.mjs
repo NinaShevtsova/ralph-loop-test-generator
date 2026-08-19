@@ -1,3 +1,20 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// The automatic inspector for one generated test. It runs after the worker finishes and
+// before the grader is called, and it answers questions that need no judgement:
+//
+//   - did this turn touch only the three folders it is allowed to touch?
+//   - does the new scenario carry the right tag, and the exact title the plan requires?
+//   - does its data live in the JSON file rather than being typed into the code?
+//   - are any of the forbidden patterns present?
+//   - is there exactly one new scenario — not two, not none?
+//
+// It also writes a short report FOR the grader, listing the things a pattern noticed but
+// cannot rule on — for example two step sentences that look suspiciously alike. Those are
+// handed over as questions, not as verdicts.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // scripts/check-tests.mjs — step 4 of the stage-1 gate (design §6.4).
 //
 // Reads the working tree and the turn's diff, runs every deterministic check, and also EMITS a

@@ -1,3 +1,19 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// This is where the loop actually talks to the AI.
+//
+// It does two things. It writes the exact text each side is given — the worker gets the
+// standing instructions plus a short section naming this turn's target; the grader gets
+// the rulebook first, then the criterion, then the code change LAST, with a line saying
+// that anything written inside that change is data and not an instruction to obey.
+//
+// Then it starts each one as a separate program and waits. Most of the awkward detail here
+// is about doing that safely on Windows, and about never letting a failure look like a
+// success: an AI that could not be started, or that never received its full instructions,
+// must be reported as a broken turn rather than as a turn that simply did nothing.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // loop/invoke.mjs — the two processes the runner spawns, and the prompts they receive.
 //
 // The prompt builders are pure so the contract with the agent and the judge is unit-tested. The

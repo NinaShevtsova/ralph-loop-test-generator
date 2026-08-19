@@ -1,3 +1,18 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// The automatic inspector for the FIRST stage — the one that builds the test framework
+// itself, before any tests are written.
+//
+// It asks one simple question: are the files this stage was told to create SO FAR present,
+// and are they real rather than empty placeholders? Nothing about quality — that is the
+// grader's job.
+//
+// "So far" is the whole trick. The framework is built in eight waves, so checking all of
+// it on turn one would fail every early turn by construction and stop the loop before it
+// started. The check is therefore always scoped to the step being worked on.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // scripts/check-scaffold.mjs — step 1 of the stage-0 gate (design §5.2).
 //
 // Answers exactly one question: are the files stage 0 was told to build **so far** present and

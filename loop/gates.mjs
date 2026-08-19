@@ -1,3 +1,19 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// A "gate" is the fixed list of checks the loop runs around every turn: reset the test
+// database, build the project, run the whole test suite, run the automatic file checks.
+//
+// This file holds those lists — and nothing else. Writing them as a plain list rather than
+// as code means their ORDER can be tested, and the order carries meaning: the database is
+// reset BEFORE the tests, because only then does a failing test mean "this test is wrong"
+// rather than "the last run left rubbish behind".
+//
+// There are two lists, not one. The "before" gate asks what must already be healthy before
+// the AI is let in — sending a worker onto a broken foundation only makes it debug someone
+// else's problem. The "after" gate asks whether this turn's own work is sound.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // loop/gates.mjs — the gate pipelines, as data.
 //
 // Declaring the steps rather than hard-coding a chain of calls means the ORDER is unit-tested. The

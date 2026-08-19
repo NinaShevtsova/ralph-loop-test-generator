@@ -1,3 +1,20 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// Tests here are written in sentences — "an owner is registered", "a pet is added to the
+// owner" — and each sentence is backed by code somewhere. Sentences are meant to be reused
+// across scenarios, not reinvented.
+//
+// But every turn starts with an empty memory, so the AI cannot remember a sentence it
+// wrote twelve turns ago. This script solves that by writing out a fresh catalogue before
+// every turn: every sentence that already exists and how many scenarios use it. The
+// instructions make reading it mandatory.
+//
+// It also measures how similar two sentences are. Nearly identical wordings fail the gate
+// outright; borderline pairs are passed to the AI grader, because telling a rewording from
+// a genuinely different check is a judgement call.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // scripts/steps-inventory.mjs — the inventory that makes step reuse structural.
 //
 // Design §4.4: an iteration does not remember the previous one, so reuse cannot rest on the agent

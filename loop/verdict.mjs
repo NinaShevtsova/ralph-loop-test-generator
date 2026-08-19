@@ -1,3 +1,19 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// The grader must answer with one of exactly three words on its very first line: PASS,
+// REJECT, or SPEC_UNCLEAR. This file reads that word, and the reasons written under it.
+//
+// The rule it enforces is deliberately lopsided: anything unreadable counts as a
+// rejection, never as a pass. Wrongly rejecting good work costs one extra turn. Wrongly
+// accepting bad work ships a broken test AND teaches every later turn to copy it — so when
+// in doubt, the gate stays shut.
+//
+// The same file also carries the note the loop writes when a turn never even reached the
+// grader, so the next turn is told the real reason instead of being handed last round's
+// unrelated feedback.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // loop/verdict.mjs — pure reading of a judge verdict file.
 //
 // The contract is one line, because the runner acts on it mechanically (design §6.6):

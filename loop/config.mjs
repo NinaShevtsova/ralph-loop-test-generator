@@ -1,3 +1,18 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// All the loop's settings in one place, so nothing important is buried in the code.
+//
+// It says which AI command runs as the worker and which as the grader, and it holds the
+// three limits that guarantee the loop cannot run forever: the most turns it may take, how
+// many failed turns in a row end it, and how many turns without progress count as stuck.
+//
+// You can override any of these from the command line or with environment variables. A
+// nonsense value — a limit that is not a plain number, an empty command — is refused here,
+// before a single token is paid for. A limit that quietly becomes "no limit" is the exact
+// accident this file exists to prevent.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // loop/config.mjs — the stage table and argument parsing. Pure, so the stops are proven by tests
 // rather than by a paid run.
 

@@ -1,3 +1,20 @@
+// ══════════════════════════════════════════════════════════════════════════════════════
+// IN PLAIN WORDS
+//
+// Every turn the AI worker starts with a completely empty memory. This little program runs
+// automatically at the start of each one and hands it a short briefing.
+//
+// The briefing has two halves, and they are kept apart on purpose. First, FACTS the program
+// measures for itself right now: which branch, is anything uncommitted, how many rows are
+// finished, how many reusable sentences exist. Second, the NOTES the previous turn wrote
+// for itself. Notes are the AI's own account and can be wrong, so the briefing ends by
+// telling it that if the two disagree, believe the facts.
+//
+// One more thing it does is stay SILENT for the grader. The grader must form its own
+// opinion from the rulebook and the code change; letting the worker's self-written notes
+// into its head would quietly undo the independence the whole design rests on.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
 // loop-memory.mjs — the memory bridge between iterations (SessionStart event).
 //
 // The Ralph loop is blind: every iteration is a NEW session with an empty context. Whatever this
