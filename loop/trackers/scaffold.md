@@ -34,7 +34,7 @@
 
 Paths are relative to the repository root. `PROJECT` below is
 `framework/src/PetClinic.ApiTests`. The authoritative description of every file's responsibility
-is §4 of [the design](../../docs/specs/2026-08-05-bdd-api-tests-ralph-loop-design.md).
+is §4 of [the design](../../docs/design/2026-08-05-bdd-api-tests-ralph-loop-design.md).
 
 ### S1 — Solution skeleton
 

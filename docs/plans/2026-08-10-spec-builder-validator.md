@@ -6,7 +6,7 @@
 
 **Tech Stack:** Node 22 ESM, `node:test`, `node:assert/strict`. No dependencies.
 
-**Design:** `docs/specs/2026-08-10-spec-builder-skill-design.md` — sections 11, 12 and 13.
+**Design:** `docs/design/2026-08-10-spec-builder-skill-design.md` — sections 11, 12 and 13.
 
 ---
 

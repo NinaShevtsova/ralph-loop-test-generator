@@ -13,7 +13,7 @@
 >
 > Where the two disagree, the review is current and the source is the authority over both.
 
-**Goal:** Build the runner, gates, prompts, trackers, rubrics and memory hook that drive the two-stage blind loop described in [`docs/specs/2026-08-05-bdd-api-tests-ralph-loop-design.md`](../specs/2026-08-05-bdd-api-tests-ralph-loop-design.md).
+**Goal:** Build the runner, gates, prompts, trackers, rubrics and memory hook that drive the two-stage blind loop described in [`docs/design/2026-08-05-bdd-api-tests-ralph-loop-design.md`](../design/2026-08-05-bdd-api-tests-ralph-loop-design.md).
 
 **Architecture:** A Node runner (`loop/ralph.mjs`) owns all deterministic truth: it resets the SUT, runs the gates, picks the target tracker row, invokes the agent in a fresh headless process, then invokes the judge as a separate read-only process, and writes the tracker status itself. All pure logic (tracker parsing, verdict parsing, step extraction, static checks) lives in separate modules covered by unit tests, so the parts the progress metric depends on are proven without spending a token.
 
@@ -3933,7 +3933,7 @@ Expected: FAIL — `ENOENT: loop/trackers/scaffold.md`
 
 Paths are relative to the repository root. `PROJECT` below is
 `framework/src/PetClinic.ApiTests`. The authoritative description of every file's responsibility
-is §4 of [the design](../../docs/specs/2026-08-05-bdd-api-tests-ralph-loop-design.md).
+is §4 of [the design](../../docs/design/2026-08-05-bdd-api-tests-ralph-loop-design.md).
 
 ### S1 — Solution skeleton
 
@@ -4362,7 +4362,7 @@ cannot edit files and you cannot commit.
 ## Inputs you are given
 
 - this rubric;
-- §4 of `docs/specs/2026-08-05-bdd-api-tests-ralph-loop-design.md` — the authoritative statement of
+- §4 of `docs/design/2026-08-05-bdd-api-tests-ralph-loop-design.md` — the authoritative statement of
   what each file is responsible for;
 - the full diff of the commit under review.
 
@@ -4861,7 +4861,7 @@ findings** from the previous round — fix all of them and start nothing else.
 0. **State left by the previous iteration.** A SessionStart hook has already poured it into your
    context: first the facts it measured itself, then the journal of previous turns. Nothing there
    means you are the first iteration.
-1. **`docs/specs/2026-08-05-bdd-api-tests-ralph-loop-design.md` §4** — the authoritative statement of
+1. **`docs/design/2026-08-05-bdd-api-tests-ralph-loop-design.md` §4** — the authoritative statement of
    what every file is responsible for. This is your specification.
 2. **`loop/trackers/scaffold.md`** — the task details section for your target wave: the exact file
    list and the DoD.

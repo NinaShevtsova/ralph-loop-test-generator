@@ -6,7 +6,7 @@
 
 **Tech Stack:** Markdown. `node:test` for the gates. No new dependencies.
 
-**Design:** `docs/specs/2026-08-10-spec-builder-skill-design.md`. Its section 19 maps each file to the section it owes; its appendix holds a first draft of `SKILL.md`.
+**Design:** `docs/design/2026-08-10-spec-builder-skill-design.md`. Its section 19 maps each file to the section it owes; its appendix holds a first draft of `SKILL.md`.
 
 ---
 
@@ -780,12 +780,12 @@ Expected: exit 0. Warnings are acceptable and should be read.
 
 - [ ] **Step 5: Delete the trial package and record the outcome**
 
-The trial is evidence, not a deliverable — a second spec package in the repository would confuse the loop, whose harness points at exactly one. Delete it, and write what happened into `docs/specs/2026-08-10-spec-builder-skill-design.md` under a short "Trial run" heading: the domain, the gate's verdict, how many criteria and how many unresolved entries, and anything the instructions got wrong.
+The trial is evidence, not a deliverable — a second spec package in the repository would confuse the loop, whose harness points at exactly one. Delete it, and write what happened into `docs/design/2026-08-10-spec-builder-skill-design.md` under a short "Trial run" heading: the domain, the gate's verdict, how many criteria and how many unresolved entries, and anything the instructions got wrong.
 
 - [ ] **Step 6: Commit the record**
 
 ```bash
-git add docs/specs/2026-08-10-spec-builder-skill-design.md
+git add docs/design/2026-08-10-spec-builder-skill-design.md
 git commit -m "docs(spec-builder): record what happened when the Skill met a domain it had never seen
 
 <replace this line with the actual outcome before committing: the domain, the
