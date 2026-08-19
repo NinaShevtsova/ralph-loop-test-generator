@@ -89,6 +89,21 @@ function buildClone(prefix) {
     writeFileSync(path, markdown);
   }
 
+  // The same rule, extended to the artefacts of PREVIOUS runs — and it was the first real run of the
+  // telemetry that proved it necessary. `loop/runs/` and `loop/evals/` are COMMITTED, so unlike the
+  // journal and the verdicts they are copied into every clone, and the summary test asserts on how
+  // many summary files exist. One real run in the repository made it find two and fail, for a reason
+  // that had nothing to do with the runner it is measuring.
+  //
+  // Emptied rather than skipped in the copy: the runner creates the directory itself, and a test that
+  // depended on it being absent would break the moment someone committed a README into it — which is
+  // exactly what is in there.
+  for (const relative of ['loop/runs', 'loop/evals']) {
+    const path = join(dir, relative);
+    if (!existsSync(path)) continue;
+    for (const name of readdirSync(path)) rmSync(join(path, name), { recursive: true, force: true });
+  }
+
   rmSync(join(dir, 'loop/JOURNAL.md'), { force: true });
   rmSync(join(dir, 'loop/STEPS.md'), { force: true });
   rmSync(join(dir, 'loop/verdicts'), { recursive: true, force: true });
