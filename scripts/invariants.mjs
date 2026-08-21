@@ -261,6 +261,29 @@ export function routeDifference(spec, code) {
  * the name — `public PetsService(` has nothing between them, so there is no match to reject. That is
  * worth knowing: a name-based exclusion would have to be kept in step with every renamed class.
  */
+/*
+ * A type declaration, and its DECLARED visibility in group 1.
+ *
+ * Needed because I5 asks what a step must be able to reach, and that is the SERVICE's surface — not
+ * every `public` member in a file under `Services/`. Measured on the regenerated scaffold, where this
+ * distinction cost a blocked row: S5 factored the four verbs into
+ *
+ *     internal sealed class RouteClient { public Task<ApiResponse<T>> Put<T>(...) => ... }
+ *
+ * alongside `public sealed class OwnersService` in the same file. `RouteClient` is plumbing; no step
+ * should reach past the service layer to call it, and no service names its update method `Put` — they
+ * are all `Update`/`UpdatePet`. So I5 demanded a call that correct work must never contain, S12 went
+ * red with all 22 steps written and building, and the turn ended `blocked` for a human. D-30 in
+ * reverse: the invariant was wrong, not the work.
+ *
+ * BOUND, stated rather than discovered later: nesting is not tracked. A non-public type nested INSIDE
+ * a public one turns the flag off for the remainder of the file, so service methods declared after it
+ * go unchecked. That is the same direction this rule already leans — open, missing a hit rather than
+ * inventing one — and a false red here blocks correct work, as it just did.
+ */
+const TYPE_DECLARATION =
+  /^\s*(public|internal|private|protected)?\s*(?:static\s+|sealed\s+|abstract\s+|partial\s+|readonly\s+|ref\s+)*(?:class|record|struct|interface)\s+[A-Za-z_]\w*/;
+
 const PUBLIC_METHOD = /public\s+[^()\n]*?\s+([A-Za-z_]\w*)\s*\(/g;
 
 /**
@@ -279,10 +302,24 @@ export function unusedServiceMethods(serviceSources, stepSources) {
   const hits = [];
 
   for (const source of serviceSources ?? []) {
-    for (const m of (source.text ?? '').matchAll(PUBLIC_METHOD)) {
-      const method = m[1];
-      if (!new RegExp(String.raw`\.\s*${method}\s*\(`).test(steps)) {
-        hits.push({ path: source.path, method });
+    // Only what a PUBLICLY DECLARED type exposes. See the note above: the flag starts false, so a
+    // file with no type declaration at all contributes nothing, which is the open direction.
+    let inPublicType = false;
+
+    for (const line of (source.text ?? '').split('\n')) {
+      const declaration = TYPE_DECLARATION.exec(line);
+      if (declaration !== null) {
+        // No modifier means `internal` in C# at namespace scope, so only an explicit `public` counts.
+        inPublicType = declaration[1] === 'public';
+        continue;
+      }
+      if (!inPublicType) continue;
+
+      for (const m of line.matchAll(PUBLIC_METHOD)) {
+        const method = m[1];
+        if (!new RegExp(String.raw`\.\s*${method}\s*\(`).test(steps)) {
+          hits.push({ path: source.path, method });
+        }
       }
     }
   }

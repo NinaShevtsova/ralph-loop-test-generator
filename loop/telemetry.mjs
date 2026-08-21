@@ -50,7 +50,7 @@
 // The judge's numbers are prefixed `j-` and the agent's `a-`, because until this task the table had one
 // unlabelled set and a reader had to know which. Both are recorded now, and a run summary that shows
 // only one of them is a run summary that hides most of the cost: the agent turn is the larger half.
-const COLUMNS = ['iter', 'row', 'phase', 'outcome', 'judge', 'j-in', 'j-out', 'j-cost', 'a-in', 'a-out', 'a-cost', 'sec', 'note'];
+const COLUMNS = ['iter', 'row', 'phase', 'outcome', 'judge', 'j-in', 'j-out', 'j-cost', 'a-in', 'a-out', 'a-cost', 'total', 'sec', 'note'];
 
 /**
  * The judge's stdout, split into the text the runner must parse and the usage it may record.
@@ -223,6 +223,39 @@ export function summaryHeader({ startedAt, stage, flow, branch, agentCmd, judgeC
  * judge at all, and a summary that showed an empty verdict cell for it would read as a judge that
  * answered nothing rather than one that was never called.
  */
+/*
+ * Judge plus agent for one turn — the question a reader of this table actually has, which until now
+ * they had to answer by adding two columns in their head. It was added after doing exactly that by
+ * hand, twice, to establish what a stage had cost.
+ *
+ * Three outcomes, and the difference between the last two is the whole point:
+ *
+ *   $2.9601    both sides reported. Exact.
+ *   $3.5728    the judge was never CALLED — a red gate or a refusal ends the turn before it. Zero is
+ *              the true contribution of a call that did not happen, so the sum is exact.
+ *   $1.4913+   something ran and did not report its cost. The `+` says "at least this much", never a
+ *              number pretending to be complete.
+ *   —          nothing reported anything.
+ *
+ * The discriminator is `verdict`, which is empty exactly when the judge never ran — already in the
+ * data, so this needs no new plumbing from the runner. Without it, both cases arrive as `usage: null`
+ * and the honest reading of one is a lie about the other.
+ */
+function totalCost({ verdict, usage, agentUsage }) {
+  const judgeRan = verdict !== '';
+  const parts = [
+    { known: usage?.costUsd ?? null, expected: judgeRan },
+    { known: agentUsage?.costUsd ?? null, expected: true },
+  ];
+
+  const reported = parts.filter((part) => part.known !== null);
+  if (reported.length === 0) return '—';
+
+  const sum = reported.reduce((total, part) => total + part.known, 0);
+  const silent = parts.some((part) => part.expected && part.known === null);
+  return `$${sum.toFixed(4)}${silent ? '+' : ''}`;
+}
+
 export function summaryRow({
   iteration,
   row,
@@ -247,6 +280,7 @@ export function summaryRow({
     agentUsage === null ? '—' : tokens(agentUsage),
     agentUsage?.outputTokens ?? '—',
     cost(agentUsage),
+    totalCost({ verdict, usage, agentUsage }),
     seconds === null ? '—' : seconds.toFixed(0),
     cell(note),
   ];
@@ -292,6 +326,20 @@ export function usageLine(usage) {
 }
 
 /**
+ * Judge plus agent for the whole run. `—` when neither reported, `+` when one of them did not.
+ *
+ * Deliberately NOT a sum of the table's own `total` column: that column is text, and re-parsing what
+ * this file just formatted is how a rounding error becomes a reported figure.
+ */
+function runTotal(usage, agentUsage) {
+  const parts = [usage?.costUsd ?? null, agentUsage?.costUsd ?? null];
+  const reported = parts.filter((value) => value !== null);
+  if (reported.length === 0) return 'neither side reported a cost';
+  const sum = reported.reduce((total, value) => total + value, 0);
+  return `$${sum.toFixed(4)}${reported.length < parts.length ? '+' : ''}`;
+}
+
+/**
  * The block appended when a run ends. Totals are written HERE and nowhere else, so a run killed with
  * Ctrl-C keeps every row it earned and simply has no totals — an honest missing number rather than a
  * total that counts half a run.
@@ -322,6 +370,9 @@ export function summaryTotals({
     `- outcomes: ${[...outcomes].map(([name, n]) => `${n} ${name}`).join(' · ') || 'none'}`,
     `- judge usage: ${usage ? usageLine(usage) : 'not reported by this JUDGE_CMD'}`,
     `- agent usage: ${agentUsage ? usageLine(agentUsage) : 'not reported by this AGENT_CMD'}`,
+    // Judge plus agent for the whole run. Marked `+` when either side went unreported, for the same
+    // reason the per-row cell is: a total that silently drops a missing number is worse than no total.
+    `- total cost: ${runTotal(usage, agentUsage)}`,
     `- wall clock: ${Math.round(wallSeconds)} s`,
     '',
   ].join('\n');

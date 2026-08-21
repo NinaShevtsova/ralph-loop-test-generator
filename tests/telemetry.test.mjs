@@ -346,3 +346,54 @@ test('parseAgentUsage reports nothing rather than zero when a tool says nothing'
   assert.equal(parseAgentUsage(''), null);
   assert.equal(parseAgentUsage(null), null);
 });
+
+// ── The total column ──────────────────────────────────────────────────────
+
+const J = { inputTokens: 40, outputTokens: 8, cacheReadTokens: 700, cacheWriteTokens: 0, costUsd: 0.9929, durationMs: null };
+const A = { inputTokens: 74, outputTokens: 17, cacheReadTokens: 2696, cacheWriteTokens: 0, costUsd: 1.4913, durationMs: null };
+
+test('the total column adds the judge to the agent', () => {
+  // The question a reader of this table actually has. Adding two columns by hand is what prompted it.
+  const row = summaryRow({ iteration: 5, row: 'S4', phase: 'agent', outcome: 'judged', verdict: 'PASS', usage: J, agentUsage: A, seconds: 565 });
+  assert.match(row, /\| \$2\.4842 \|/, row);
+});
+
+test('a turn that never reached the judge totals the agent alone, with no + marker', () => {
+  // A red gate ends the turn before the judge is called. Zero IS the true contribution of a call that
+  // did not happen, so this sum is exact and must not be hedged.
+  const row = summaryRow({ iteration: 6, row: 'S5', phase: 'agent', outcome: 'gate red', agentUsage: A, seconds: 320 });
+  assert.match(row, /\| \$1\.4913 \|/, row);
+  assert.doesNotMatch(row, /\$1\.4913\+/, 'nothing was silent here, so the total is not a floor');
+});
+
+test('a judge that ran and reported nothing makes the total a floor, not a number', () => {
+  // The distinction the whole helper exists for: `usage: null` arrives for both "never called" and
+  // "called and said nothing", and reporting the second as complete would be a lie about the run.
+  const row = summaryRow({ iteration: 7, row: 'S5', phase: 'agent', outcome: 'judged', verdict: 'PASS', usage: null, agentUsage: A, seconds: 832 });
+  assert.match(row, /\| \$1\.4913\+ \|/, row);
+});
+
+test('a turn where nobody reported a cost totals to a dash, never to zero', () => {
+  const row = summaryRow({ iteration: 8, row: 'S6', phase: 'agent', outcome: 'refused', seconds: 12 });
+  const cells = row.split('|').map((cell) => cell.trim());
+  assert.equal(cells[12], '—', row);
+  assert.doesNotMatch(row, /\$0/, '"nobody said" must never render as "it was free"');
+});
+
+test('the header carries the total column, between a-cost and sec', () => {
+  // Position is not cosmetic: the cell has to sit beside the two numbers it sums, or the reader has to
+  // scan across the row to check the arithmetic.
+  const header = summaryHeader({ startedAt: 'now', stage: 'scaffold', flow: null, branch: 'b', agentCmd: 'a', judgeCmd: 'j', stops: { maxIter: 1, kFailures: 1, noImprovement: 1 } });
+  assert.match(header, /\| a-cost \| total \| sec \| note \|/, header);
+});
+
+test('the run total sums both sides, and marks a floor when one of them is silent', () => {
+  const both = summaryTotals({ iterations: 2, rows: ['judged'], usage: J, agentUsage: A, wallSeconds: 10, reason: 'done' });
+  assert.match(both, /- total cost: \$2\.4842$/m, both);
+
+  const half = summaryTotals({ iterations: 2, rows: ['judged'], usage: null, agentUsage: A, wallSeconds: 10, reason: 'done' });
+  assert.match(half, /- total cost: \$1\.4913\+$/m, half);
+
+  const neither = summaryTotals({ iterations: 2, rows: ['judged'], usage: null, agentUsage: null, wallSeconds: 10, reason: 'done' });
+  assert.match(neither, /- total cost: neither side reported a cost$/m, neither);
+});

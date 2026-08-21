@@ -355,6 +355,69 @@ test('I5 is green when a method is called from any step file, not only its own',
   assert.deepEqual(unusedServiceMethods([SERVICE_SOURCE], steps), []);
 });
 
+test('I5 ignores a non-public helper type in the same file - the case that blocked S12', () => {
+  /*
+   * Measured on the regenerated scaffold. S5 factored the four verbs into an `internal sealed class
+   * RouteClient` sitting beside `public sealed class OwnersService` in one file. Its members are
+   * `public` inside an `internal` type, so the old rule demanded a step call `.Put(` - which correct
+   * work can never contain, because every service names its update method `Update`/`UpdatePet`.
+   *
+   * The result was a blocked row with all 22 steps written and building, and an agent that correctly
+   * refused to call the helper from a step just to satisfy the checker.
+   */
+  const source = {
+    path: 'Services/OwnersService.cs',
+    text: [
+      'internal sealed class RouteClient',
+      '{',
+      '    public Task<ApiResponse<T>> Put<T>(string path, object body) => _client.PutAsync<T>(path);',
+      '    public Task<ApiResponse<T>> Get<T>(string path) => _client.GetAsync<T>(path);',
+      '}',
+      '',
+      'public sealed class OwnersService',
+      '{',
+      '    public Task<ApiResponse<Owner>> Update(int id, Owner owner) => _route.Put<Owner>("owners", owner);',
+      '}',
+    ].join('\n'),
+  };
+  const steps = [{ path: 'StepDefinitions/OwnerSteps.cs', text: '_owners.Update(id, owner);' }];
+  assert.deepEqual(unusedServiceMethods([source], steps), []);
+});
+
+test('I5 still reports an unreachable method of the PUBLIC type that follows a helper', () => {
+  // The other half, and the one that proves the fix is a narrowing rather than a switch-off: the flag
+  // has to come back ON at the next public declaration, or I5 would silently stop checking services
+  // in every file that happens to declare a helper first.
+  const source = {
+    path: 'Services/OwnersService.cs',
+    text: [
+      'internal sealed class RouteClient',
+      '{',
+      '    public Task<ApiResponse<T>> Put<T>(string path) => _client.PutAsync<T>(path);',
+      '}',
+      'public sealed class OwnersService',
+      '{',
+      '    public Task<ApiResponse<Owner>> Update(int id) => _route.Put<Owner>("owners");',
+      '    public Task<ApiResponse> Forgotten(int id) => _route.Delete("owners/{id}");',
+      '}',
+    ].join('\n'),
+  };
+  const steps = [{ path: 'StepDefinitions/OwnerSteps.cs', text: '_owners.Update(id);' }];
+  assert.deepEqual(unusedServiceMethods([source], steps), [
+    { path: 'Services/OwnersService.cs', method: 'Forgotten' },
+  ]);
+});
+
+test('I5 treats a type with no access modifier as internal, which is what C# does', () => {
+  // `class Foo` at namespace scope is internal. Reading it as public would put the helper back in
+  // scope through the back door.
+  const source = {
+    path: 'Services/Helper.cs',
+    text: 'sealed class Helper\n{\n    public Task Nobody() => Task.CompletedTask;\n}',
+  };
+  assert.deepEqual(unusedServiceMethods([source], []), []);
+});
+
 // ── I6: no sentence is bound twice under the same keyword ────────────────────────────
 //
 // There is no count check, and the test below pins that absence rather than leaving it implicit.
