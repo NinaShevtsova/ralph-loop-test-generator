@@ -16,8 +16,8 @@
 | S3 | wave-2 | Models: Owner, Pet, PetType, Visit | done |
 | S4 | wave-3 | HTTP core: RequestSpec, RequestSpecBuilder, ApiResponse, ApiClient | done |
 | S5 | wave-4 | Services: all 22 routes of the conventions table | done |
-| S6 | wave-5 | UniqueData: letters-only suffix, 10-digit telephone, invariant dates | review |
-| S7 | wave-5 | ResourceTracker: drain in the mandatory order, swallow only 404 | todo |
+| S6 | wave-5 | UniqueData: letters-only suffix, 10-digit telephone, invariant dates | done |
+| S7 | wave-5 | ResourceTracker: drain in the mandatory order, swallow only 404 | review |
 | S8 | wave-5 | ReadinessProbe: poll until ready, never restart anything | todo |
 | S9 | wave-6 | ScenarioState: scenario-scoped state for every request step | todo |
 | S10 | wave-6 | TestDataProvider and the case POCOs, keyed by the AC tag | todo |
