@@ -71,7 +71,7 @@ import {
   validateTable,
   forbiddenStatusWrites,
 } from './tracker.mjs';
-import { gateSteps, preGateSteps, runGate } from './gates.mjs';
+import { gateSteps, preGateSteps, runGate, skipPreGate } from './gates.mjs';
 import { targetSection, judgePrompt, runAgent, runJudge } from './invoke.mjs';
 import {
   parseJudgeReply,
@@ -467,10 +467,20 @@ const waveOf = (row) => {
 };
 
 /**
+ * The HEAD the last gate proved green, or null. In memory on purpose.
+ *
+ * On disk this would also skip the first pre-gate of a RESUMED run — one gate per resume — at the
+ * price of four failure branches (the file missing, unreadable, stale after a rebase, and its
+ * interaction with `git clean`). A fresh process starts at null and simply runs the gate, which is
+ * the conservative answer and needs no branches at all.
+ */
+let lastGreenSha = null;
+
+/**
  * The gate on the CURRENT HEAD, before the agent is let in. An agent sent onto a broken foundation
  * debugs someone else's problem.
  *
- * `preGateSteps`, not `gateSteps` — see the note there. Skipped in two further cases:
+ * `preGateSteps`, not `gateSteps` — see the note there. Skipped in three further cases:
  *
  *   - the solution does not exist yet. On the first iteration of stage 0 there is nothing to build,
  *     and a gate that cannot pass would stop the loop before it started.
@@ -479,10 +489,37 @@ const waveOf = (row) => {
  *     loop could not rework anything at all — a red post-turn gate leaves the tree red, the next
  *     iteration would read that same tree as a foundation fault, and the run would die one iteration
  *     after the first red instead of retrying it. `K_FAILURES` would never reach 2.
+ *   - the last gate proved this exact HEAD green and nothing has moved since (D-23, D-24). See
+ *     `skipPreGate` in gates.mjs for why that is a subset of what was just proven, and `lastGreenSha`
+ *     above for why the memory of it does not survive the process.
  */
 function preGate(row) {
   if (row.status === 'rework') return { green: true, failedAt: null, log: 'skipped — row is in rework' };
   if (!existsSync(SOLUTION)) return { green: true, failedAt: null, log: 'skipped — no solution yet' };
+
+  /*
+   * D-24: stage 0 only. On stage 1 the pre-gate also runs `sut reset`, and D-09 requires a clean
+   * database before a run — skipping it there is a separate decision with a separate rationale.
+   *
+   * Both probes are `gitTry`, and a failure of either runs the gate: `git()` returns '' for a failed
+   * command as well as for an empty result, and '' must never be able to satisfy a skip.
+   */
+  if (config.stage === 'scaffold') {
+    const head = gitTry(ROOT, 'rev-parse', 'HEAD');
+    const dirty = gitTry(ROOT, 'status', '--porcelain', '--untracked-files=normal', '--', ...WATCHED);
+    if (
+      head.ok &&
+      dirty.ok &&
+      skipPreGate({ lastGreenSha, headSha: head.out, dirty: dirty.out !== '' })
+    ) {
+      return {
+        green: true,
+        failedAt: null,
+        log: `skipped — the last gate proved HEAD ${head.out.slice(0, 7)} green and nothing has moved`,
+      };
+    }
+  }
+
   return runGate(preGateSteps(config.stage, { wave: waveOf(row) }), { root: ROOT, run });
 }
 
@@ -604,6 +641,10 @@ let summaryOpened = false;
 let summaryFinished = false;
 const summaryOutcomes = [];
 let judgeUsageTotal = null;
+// Kept apart from the judge's, never summed into it. The two are priced differently and answer
+// different questions — "is the grader expensive" and "is the generator expensive" — and one figure
+// covering both would answer neither.
+let agentUsageTotal = null;
 
 const openSummary = () => {
   if (summaryOpened) return;
@@ -632,6 +673,7 @@ const record = (entry) => {
     openSummary();
     summaryOutcomes.push(entry.outcome);
     judgeUsageTotal = addUsage(judgeUsageTotal, entry.usage ?? null);
+    agentUsageTotal = addUsage(agentUsageTotal, entry.agentUsage ?? null);
     appendFileSync(SUMMARY, `${summaryRow(entry)}\n`);
   } catch (error) {
     console.error(`ralph: could not write the run summary — ${error.message}`);
@@ -649,6 +691,7 @@ function finishSummary(reason) {
         iterations: iteration,
         rows: summaryOutcomes,
         usage: judgeUsageTotal,
+        agentUsage: agentUsageTotal,
         wallSeconds: (Date.now() - runStartedMs) / 1000,
         reason,
         // Through the validated read, like every other count in this runner. A tracker that has gone
@@ -751,8 +794,13 @@ for (;;) {
   // runs on the recovery path, so there is no window in which the file could have been rewritten.
   let trackerBeforeTurn = null;
 
-  // Wall clock for the turn. The only cost signal there is for the agent — its stdio is inherited so
-  // a human can watch it, which rules out `--output-format json` and the usage that comes with it.
+  // What this turn's agent reported spending. Stays null for a `review` row, where no agent ran, and
+  // for any AGENT_CMD that does not speak the stream-json envelope — a summary must not record a tool's
+  // silence as a zero.
+  let turnAgentUsage = null;
+
+  // Wall clock for the turn. Recorded beside the token counts rather than instead of them: it is the
+  // only signal that survives an AGENT_CMD which reports no usage at all.
   const iterationStartedMs = Date.now();
 
   // ── The agent turn (skipped when recovering a row left in `review`) ───────────────
@@ -763,6 +811,17 @@ for (;;) {
       console.error(pre.log);
       stopRun(1, `the repository was red before the turn (${pre.failedAt})`);
     }
+
+    /*
+     * A pre-gate that was SKIPPED gets one line, and until this existed none of the three reasons did.
+     *
+     * `pre.log` was only ever printed on the red path above, so every skip message `preGate` builds —
+     * "row is in rework", "no solution yet", and now "the last gate proved HEAD … green" — was
+     * constructed and thrown away. That leaves a run's timing unexplainable: an operator cannot tell a
+     * gate that passed in eleven seconds from one that never ran, which is precisely the question the
+     * skip introduces. It is also the only evidence that the optimisation fired at all.
+     */
+    if (pre.log.startsWith('skipped')) console.log(`ralph: pre-gate ${pre.log}`);
 
     headBeforeTurn = gitTry(ROOT, 'rev-parse', 'HEAD');
     if (!headBeforeTurn.ok) {
@@ -812,7 +871,7 @@ for (;;) {
     // is exactly what the wave-4 turn did with the runner's `done` for S4.
     trackerBeforeTurn = tracker();
 
-    const { ok, why } = await runAgent(config.agentCmd, prompt, {
+    const { ok, why, usage: agentUsage } = await runAgent(config.agentCmd, prompt, {
       root: ROOT,
       // The SessionStart hook has no other way to know which stage's tracker to read.
       env: { RALPH_STAGE: config.stage, RALPH_TRACKER: config.tracker, RALPH_TARGET: row.id },
@@ -821,6 +880,7 @@ for (;;) {
       },
     });
     activeChild = null;
+    turnAgentUsage = agentUsage ?? null;
 
     // An agent that crashed is not a "turn without progress", it is a broken runner. Do not be quiet.
     if (!ok) stopRun(1, `the agent "${config.agentCmd}" did not complete: ${why}`);
@@ -1030,6 +1090,9 @@ for (;;) {
       row: row.id,
       phase,
       outcome: tampering ? 'refused' : 'gate red',
+      // A turn that failed still cost what it cost. Leaving the agent's usage out of the red rows
+      // would make the totals understate exactly the turns worth understanding.
+      agentUsage: turnAgentUsage,
       seconds: (Date.now() - iterationStartedMs) / 1000,
       note: tampering ? failure : `red at ${gate.failedAt}`,
     });
@@ -1066,6 +1129,13 @@ for (;;) {
     continue; // the judge is NOT called on a failed turn — grading a red test is burnt tokens
   }
   failures = 0;
+
+  // The gate just proved this HEAD green, so the next iteration's pre-gate has nothing to add. Read
+  // here rather than reused from `headBeforeTurn`, which is null on the `review` recovery path.
+  if (config.stage === 'scaffold') {
+    const headNow = gitTry(ROOT, 'rev-parse', 'HEAD');
+    lastGreenSha = headNow.ok ? headNow.out : null;
+  }
 
   // ── The judge — a separate read-only process ──────────────────────────────────────
   //
@@ -1238,6 +1308,7 @@ for (;;) {
     outcome: 'judged',
     verdict,
     usage: judgeUsage,
+    agentUsage: turnAgentUsage,
     seconds: (Date.now() - iterationStartedMs) / 1000,
     note: verdict === 'PASS' ? '' : verdictFindings(judgeText),
   });

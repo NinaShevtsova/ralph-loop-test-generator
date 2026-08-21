@@ -36,9 +36,38 @@
 // files attribute differently. A wrong tag makes the gate demand a file from a turn nobody has been
 // asked to take, which is precisely the defect the row scope exists to remove.
 
+import { FLOW_GROUPS } from './flows.mjs';
+
 export const PROJECT_DIR = 'framework/src/PetClinic.ApiTests';
 
 const p = (relativePath) => `${PROJECT_DIR}/${relativePath}`;
+
+/**
+ * One feature-skeleton entry per flow.
+ *
+ * Derived rather than written out, so that adding a flow is one line in `scripts/flows.mjs`: the
+ * skeleton becomes a stage-0 requirement on its own, and a from-scratch rebuild produces it. Written
+ * out, a fourth flow would have no skeleton until somebody remembered a list in this file — and the
+ * omission would not surface here. It would surface as a REJECTED STAGE-1 TURN, because
+ * `scripts/check-tests.mjs` fails when the feature file of the flow under test is absent, and the
+ * message it prints blames stage 0.
+ *
+ * Exported, and takes its flow map as an argument, because that is the only way the property can be
+ * tested: three flows and three skeletons agree whether or not the list is derived, so the test has to
+ * be able to ask for a fourth.
+ *
+ * The probe carries the flow's own tag — `F-01` -> `@F01`, the spelling a feature header uses — so one
+ * flow's skeleton cannot be satisfied by another flow's file. `\b` after it keeps `@F01` from matching
+ * inside a longer tag.
+ */
+export function featureSkeletonEntries(flowGroups) {
+  return Object.entries(flowGroups).map(([group, slug]) => ({
+    path: p(`Features/${slug}.feature`),
+    row: 'S13',
+    wave: 8,
+    probes: [/Feature\s*:/, new RegExp(`@${group.replace('-', '')}\\b`)],
+  }));
+}
 
 export const SCAFFOLD_MANIFEST = [
   // ── Solution skeleton (S1) ────────────────────────────────────────────────────
@@ -100,6 +129,15 @@ export const SCAFFOLD_MANIFEST = [
   },
   { path: p('Http/ApiClient.cs'), row: 'S4', wave: 3, probes: [/class ApiClient/, /RestClient/, /Shared/] },
   { path: p('Http/ApiResponse.cs'), row: 'S4', wave: 3, probes: [/StatusCode/, /EnsureStatus/, /RawContent/] },
+  // The unit test for the file above. S4's DoD makes EnsureStatus's message load-bearing -- every one
+  // of the twenty scenarios routes its status checks through it -- and until this entry existed that
+  // property was checked by a judge reading code rather than by anything running.
+  {
+    path: p('Tests/Unit/ApiResponseTests.cs'),
+    row: 'S4',
+    wave: 3,
+    probes: [/EnsureStatus/, /RawContent/, /Category\("Unit"\)/],
+  },
 
   // ── Services (S5) — Service Object, all 22 routes of §7 ───────────────────────
   {
@@ -131,6 +169,13 @@ export const SCAFFOLD_MANIFEST = [
     // §10.5 letters-only last name suffix, §11 exactly-10-digit telephone, invariant dates.
     probes: [/class UniqueData/, /LastName/, /Telephone/, /InvariantCulture/],
   },
+  // S6's DoD says in as many words that "unit checks prove" these constraints. They did not exist.
+  {
+    path: p('Tests/Unit/UniqueDataTests.cs'),
+    row: 'S6',
+    wave: 5,
+    probes: [/Telephone/, /LastName/, /InvariantCulture|uk-UA/, /Category\("Unit"\)/],
+  },
   {
     path: p('Support/ResourceTracker.cs'),
     row: 'S7',
@@ -147,7 +192,11 @@ export const SCAFFOLD_MANIFEST = [
     row: 'S10',
     wave: 6,
     // D-15: the key comes from the scenario tag, not from a hand-written string.
-    probes: [/class TestDataProvider/, /ScenarioContext|ScenarioInfo/, /AC-/],
+    //
+    // `EnumerateFiles` is the requirement's fingerprint: the data file is FOUND, not looked up in a
+    // list. A closed map would satisfy every other probe here while making a fourth flow impossible
+    // for stage 1 to add, because TestData/ sits outside the stage-1 fence.
+    probes: [/class TestDataProvider/, /ScenarioContext|ScenarioInfo/, /AC-/, /EnumerateFiles|GetFiles/],
   },
   { path: p('TestData/Cases/OwnerCase.cs'), row: 'S10', wave: 6, probes: [/OwnerCase/] },
   { path: p('TestData/Cases/PetCase.cs'), row: 'S10', wave: 6, probes: [/PetCase/] },
@@ -159,7 +208,18 @@ export const SCAFFOLD_MANIFEST = [
     path: p('Hooks/ScenarioHooks.cs'),
     row: 'S11',
     wave: 6,
-    probes: [/BeforeTestRun/, /BeforeScenario/, /AfterScenario/, /Drain/],
+    // `BeforeScenario` for readiness, and NOT `BeforeTestRun`: the second makes every `dotnet test`
+    // in this assembly wait for the SUT, filter or no filter — measured at 96 s and red with the
+    // container stopped.
+    //
+    // THE PROHIBITION IS NOT ENFORCEABLE HERE, and saying so is the point of this comment. A probe is
+    // a required marker: `check-scaffold.mjs` asks whether each one is PRESENT and has no way to
+    // express a forbidden one. So a file carrying both a `Lazy<Task>` and a `[BeforeTestRun]` passes
+    // every probe below while reintroducing the regression in full. `Lazy<Task>` here is evidence of
+    // the right shape, not a guarantee against the wrong one.
+    //
+    // I7 in scripts/invariants.mjs is the half that refuses it, scoped to this same row.
+    probes: [/BeforeScenario/, /RegisterInstanceAs/, /Drain/, /Lazy<Task>/],
   },
   { path: p('AssemblyInfo.cs'), row: 'S11', wave: 6, probes: [/NonParallelizable/] },
 
@@ -175,9 +235,9 @@ export const SCAFFOLD_MANIFEST = [
   },
 
   // ── Feature skeletons (S13) ───────────────────────────────────────────────────
-  { path: p('Features/F01-owner-lifecycle.feature'), row: 'S13', wave: 8, probes: [/Feature\s*:/, /@F01/] },
-  { path: p('Features/F02-owner-pet-lifecycle.feature'), row: 'S13', wave: 8, probes: [/Feature\s*:/, /@F02/] },
-  { path: p('Features/F03-pet-visit-flow.feature'), row: 'S13', wave: 8, probes: [/Feature\s*:/, /@F03/] },
+  //
+  // One per flow, DERIVED from the flow list — see `featureSkeletonEntries` below for why.
+  ...featureSkeletonEntries(FLOW_GROUPS),
 
   // ── Smoke suite (S14) — the acceptance mechanism, design §5.3 ─────────────────
   {
@@ -191,6 +251,25 @@ export const SCAFFOLD_MANIFEST = [
     ],
   },
   { path: p('Data/FrameworkSmokeTests.json'), row: 'S14', wave: 8, probes: [/./s] },
+  // The canary. S14 owns "the acceptance mechanism", and this is its Reqnroll half: the smoke tests
+  // are plain NUnit and prove the services, while this one scenario is the only thing in stage 0 that
+  // executes the hooks, the container, ScenarioState, the tag-to-data lookup and the request steps.
+  //
+  // Outside Features/ on purpose -- check-tests.mjs counts scenarios only there, and Tests/ is outside
+  // the stage-1 fence, so a stage-1 turn can neither disturb the count nor edit the file. The data
+  // file's name starts with the flow tag because that is how the provider finds it (S10's DoD).
+  {
+    path: p('Tests/Smoke/F00-framework-wiring.feature'),
+    row: 'S14',
+    wave: 8,
+    probes: [/@F00\b/, /@AC-F00-01\b/, /Scenario\s*:/],
+  },
+  {
+    path: p('Data/F00-framework-wiring.json'),
+    row: 'S14',
+    wave: 8,
+    probes: [/AC-F00-01/, /owner/, /pet/],
+  },
 ];
 
 /**
@@ -216,4 +295,45 @@ export function entriesThroughRow(rowId) {
   const ordinal = SCAFFOLD_ROWS.indexOf(rowId);
   if (ordinal === -1) return null;
   return SCAFFOLD_MANIFEST.filter((entry) => SCAFFOLD_ROWS.indexOf(entry.row) <= ordinal);
+}
+
+/**
+ * The manifest path that first brings EXECUTABLE tests into the suite, and the one that first brings
+ * unit tests. Named here rather than in `loop/gates.mjs` because the manifest is what knows which row
+ * builds them, and a second copy of the path is a second thing to keep in step.
+ */
+export const SMOKE_SUITE_ENTRY = p('Tests/Smoke/FrameworkSmokeTests.cs');
+export const UNIT_TEST_ENTRY = p('Tests/Unit/ApiResponseTests.cs');
+
+/**
+ * The tracker row that builds `path`, or `null` when the manifest does not know the path.
+ *
+ * `null` rather than a throw, and never a guess: the caller is composing a gate, and it must be able
+ * to say "the manifest does not know this file" in its own words instead of receiving a stack trace
+ * or, worse, a boolean that reads as "no row needs this step".
+ */
+export function rowOwning(path) {
+  return SCAFFOLD_MANIFEST.find((entry) => entry.path === path)?.row ?? null;
+}
+
+/**
+ * Whether `rowId` comes at or after the row that builds `entryPath` — i.e. whether that file exists
+ * once this row's turn is finished.
+ *
+ * This is how the stage-0 gate decides which steps to run: `dotnet test` is pointless while the suite
+ * holds no tests, and the stage-0 prompt says so itself ("reporting zero tests is a pass"). Measured
+ * before this existed: ~25 of ~27 gate runs restarted Docker and ran a suite of zero tests.
+ *
+ * `null` when either side is unknown, for the reason `rowOwning` returns null: a gate step must never
+ * go missing because a lookup quietly answered "no".
+ */
+export function rowNeeds(rowId, entryPath) {
+  const owner = rowOwning(entryPath);
+  if (owner === null) return null;
+
+  const target = SCAFFOLD_ROWS.indexOf(rowId);
+  const boundary = SCAFFOLD_ROWS.indexOf(owner);
+  if (target === -1 || boundary === -1) return null;
+
+  return target >= boundary;
 }

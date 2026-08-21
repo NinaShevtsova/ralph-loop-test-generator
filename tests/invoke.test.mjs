@@ -561,3 +561,226 @@ test('runJudge returns an empty out when the judge exits 0 having printed nothin
   assert.match(result.why, /exit code 0/);
   rmSync(dir, { recursive: true, force: true });
 });
+
+test('the target section tells a tests turn it may create a missing feature file', () => {
+  // A flow added after stage 0 ran has no skeleton. `Features/` is inside the stage-1 fence, and
+  // `check-tests.mjs` looks for the file AFTER the turn — so a turn that creates it passes. Without
+  // this sentence the agent has no way to know that, and its prompt says "append", which reads as
+  // "the file is there". The prompt itself is write-protected by .claude/settings.json, so the
+  // instruction belongs in the section the runner generates.
+  const section = targetSection({
+    stage: 'tests',
+    iteration: 1,
+    maxIter: 30,
+    row: { id: 'AC-F01-01', group: 'F-01', title: 'a registered owner is visible', status: 'todo' },
+    branch: 'feat/api-tests',
+    findings: '',
+  });
+  assert.match(section, /create (it|the file) if it does not exist/i);
+});
+
+test('the same section still names the exact feature file to append to', () => {
+  // The new sentence must not displace the path — that is what the turn acts on.
+  const section = targetSection({
+    stage: 'tests',
+    iteration: 1,
+    maxIter: 30,
+    row: { id: 'AC-F03-02', group: 'F-03', title: 't', status: 'todo' },
+    branch: 'b',
+    findings: '',
+  });
+  assert.match(section, /Features\/F03-pet-visit-flow\.feature/);
+});
+
+// ── The agent turn is watched AND priced ─────────────────────────────────────────────
+//
+// The interpreter is named `node` rather than `process.execPath`, and that is not cosmetic.
+// `splitCommand` splits the command on whitespace, and on this machine `process.execPath` is
+// `C:\Program Files\nodejs\node.exe` — so `${process.execPath} ${stub}` makes `bin` into
+// `C:\Program`, and cmd.exe answers `'C:\Program' is not recognized as an internal or external
+// command` with `{ ok: false, why: 'exit code 1' }`. Measured. `node` from PATH is the same
+// interpreter and is what the `runJudge` stub tests above already use for the same reason. It is
+// still a stub and still cannot cost anything: no `claude` is ever on the command line below.
+const NODE = /\s/.test(process.execPath) ? 'node' : process.execPath;
+
+test('runAgent returns the usage the stream reported, and relays the text it saw', async () => {
+  // A stub that speaks the stream-json shape: one object per line, the result last. No `claude`
+  // involved — this test must never be able to spend money.
+  const stub = join(tmpdir(), `agent-stub-${process.pid}.mjs`);
+  writeFileSync(
+    stub,
+    [
+      "process.stdout.write(JSON.stringify({ type: 'system', subtype: 'init' }) + '\\n');",
+      "process.stdout.write(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'writing the scenario' }] } }) + '\\n');",
+      "process.stdout.write(JSON.stringify({ type: 'result', result: 'done', usage: { input_tokens: 11, output_tokens: 22, cache_read_input_tokens: 33, cache_creation_input_tokens: 44 }, total_cost_usd: 0.5, duration_ms: 1234 }) + '\\n');",
+    ].join('\n')
+  );
+
+  const relayed = [];
+  const result = await runAgent(`${NODE} ${stub}`, 'the prompt', {
+    root: process.cwd(),
+    onOutput: (line) => relayed.push(line),
+  });
+
+  assert.equal(result.ok, true, result.why);
+  assert.deepEqual(result.usage, {
+    inputTokens: 11,
+    outputTokens: 22,
+    cacheReadTokens: 33,
+    cacheWriteTokens: 44,
+    costUsd: 0.5,
+    durationMs: 1234,
+  });
+  assert.ok(
+    relayed.some((line) => line.includes('writing the scenario')),
+    `the operator must still see the turn; relayed:\n${relayed.join('\n')}`
+  );
+  rmSync(stub, { force: true });
+});
+
+test('runAgent still succeeds, with no usage, for a tool that does not speak the envelope', async () => {
+  // AGENT_CMD is documented as pluggable. A tool that prints plain text must keep working, and must
+  // report `usage: null` rather than zeroes — "nobody said" is not "it was free".
+  const stub = join(tmpdir(), `agent-plain-${process.pid}.mjs`);
+  writeFileSync(stub, "process.stdout.write('just some text\\n');");
+
+  const relayed = [];
+  const result = await runAgent(`${NODE} ${stub}`, 'p', {
+    root: process.cwd(),
+    onOutput: (line) => relayed.push(line),
+  });
+
+  assert.equal(result.ok, true, result.why);
+  assert.equal(result.usage, null);
+  assert.deepEqual(relayed, ['just some text'], 'a plain tool\'s output must not become silence');
+  rmSync(stub, { force: true });
+});
+
+test('a character whose bytes are split across two chunks survives the relay', async () => {
+  // The relay is `buffered += chunk`, and a Buffer added to a string decodes ON ITS OWN. A pipe splits
+  // wherever the kernel happens to, so a two- or three-byte character straddling a boundary became
+  // U+FFFD on both sides of it — silently, in the operator's only view of the turn.
+  //
+  // The stub writes ONE BYTE per event, a millisecond apart, so both multi-byte characters below are
+  // guaranteed to be split. That is the whole point: a stub writing whole strings passes with or
+  // without the decoder and would prove nothing.
+  const stub = join(tmpdir(), `agent-utf8-${process.pid}.mjs`);
+  writeFileSync(
+    stub,
+    `const text = '§ 7.1 — the route table';
+const buf = Buffer.concat([Buffer.from(text, 'utf8'), Buffer.from([10])]);
+let i = 0;
+const tick = () => {
+  if (i >= buf.length) return;
+  process.stdout.write(buf.subarray(i, i + 1));
+  i += 1;
+  setTimeout(tick, 1);
+};
+tick();
+`
+  );
+
+  const relayed = [];
+  const result = await runAgent(`${NODE} ${stub}`, 'p', {
+    root: process.cwd(),
+    onOutput: (line) => relayed.push(line),
+  });
+
+  assert.equal(result.ok, true, result.why);
+  assert.deepEqual(relayed, ['§ 7.1 — the route table']);
+  assert.ok(
+    !relayed.join('').includes(String.fromCharCode(0xfffd)),
+    `the relay produced a replacement character: ${JSON.stringify(relayed)}`
+  );
+  rmSync(stub, { force: true });
+});
+
+test('a tool result is relayed, trimmed from the head, and says how much it dropped', async () => {
+  // The relay used to drop `user` events wholesale, so a tool call showed as `· Bash` with no answer
+  // under it. Six lines in, four out, and the count of the two that were not shown.
+  const stub = join(tmpdir(), `agent-tool-ok-${process.pid}.mjs`);
+  writeFileSync(
+    stub,
+    [
+      "const many = Array.from({ length: 6 }, (_, i) => 'out ' + (i + 1)).join('\\n');",
+      "const event = { type: 'user', message: { content: [{ type: 'tool_result', content: many }] } };",
+      "process.stdout.write(JSON.stringify(event) + '\\n');",
+    ].join('\n')
+  );
+
+  const relayed = [];
+  const result = await runAgent(`${NODE} ${stub}`, 'p', {
+    root: process.cwd(),
+    onOutput: (line) => relayed.push(line),
+  });
+  const out = relayed.join('\n');
+
+  assert.equal(result.ok, true, result.why);
+  assert.match(out, /out 1/, out);
+  assert.match(out, /out 4/, out);
+  assert.doesNotMatch(out, /out 5/, 'the budget is four lines, so the fifth must not be printed');
+  assert.match(out, /2 more line\(s\)/, 'a trim that does not say it trimmed reads as the whole answer');
+  rmSync(stub, { force: true });
+});
+
+test('a FAILED tool result is relayed from the tail, where a build or a test run puts its summary', async () => {
+  // Deliberately the opposite end from a success: `dotnet build` and `dotnet test` both put the line
+  // that explains the failure last, and the head of that output is `Determining projects to restore`.
+  const stub = join(tmpdir(), `agent-tool-err-${process.pid}.mjs`);
+  writeFileSync(
+    stub,
+    [
+      "const many = Array.from({ length: 15 }, (_, i) => 'step ' + (i + 1)).join('\\n');",
+      "const block = { type: 'tool_result', is_error: true, content: many };",
+      "process.stdout.write(JSON.stringify({ type: 'user', message: { content: [block] } }) + '\\n');",
+    ].join('\n')
+  );
+
+  const relayed = [];
+  const result = await runAgent(`${NODE} ${stub}`, 'p', {
+    root: process.cwd(),
+    onOutput: (line) => relayed.push(line),
+  });
+  const out = relayed.join('\n');
+
+  assert.equal(result.ok, true, result.why);
+  assert.match(out, /step 15/, 'the last line is the one that explains a red build');
+  assert.match(out, /step 4/, 'twelve lines of budget reach back to the fourth');
+  assert.doesNotMatch(out, /step 3\b/, 'the three lines before the budget are dropped, not shown');
+  assert.match(out, /3 earlier line\(s\) not shown/, out);
+  rmSync(stub, { force: true });
+});
+
+test('a user event carrying no tool result stays silent, as it always did', async () => {
+  // The change is scoped to `tool_result`. Anything else on a `user` event is bookkeeping, and adding
+  // that to the relay would drown the part that matters.
+  const stub = join(tmpdir(), `agent-tool-none-${process.pid}.mjs`);
+  writeFileSync(
+    stub,
+    [
+      "const event = { type: 'user', message: { content: [{ type: 'text', text: 'bookkeeping' }] } };",
+      "process.stdout.write(JSON.stringify(event) + '\\n');",
+    ].join('\n')
+  );
+
+  const relayed = [];
+  const result = await runAgent(`${NODE} ${stub}`, 'p', {
+    root: process.cwd(),
+    onOutput: (line) => relayed.push(line),
+  });
+
+  assert.equal(result.ok, true, result.why);
+  assert.deepEqual(relayed, []);
+  rmSync(stub, { force: true });
+});
+
+test('an agent that exits non-zero is still a failed turn, usage or no usage', async () => {
+  const stub = join(tmpdir(), `agent-fail-${process.pid}.mjs`);
+  writeFileSync(stub, 'process.exit(3);');
+
+  const result = await runAgent(`${NODE} ${stub}`, 'p', { root: process.cwd() });
+
+  assert.equal(result.ok, false);
+  assert.match(result.why, /exit code 3/);
+  rmSync(stub, { force: true });
+});

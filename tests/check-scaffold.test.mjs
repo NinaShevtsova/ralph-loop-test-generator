@@ -35,7 +35,7 @@ import { SCAFFOLD_MANIFEST, entriesThroughRow } from '../scripts/manifest.scaffo
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PROJECT = 'framework/src/PetClinic.ApiTests';
 
-/** Every file of rows S1..S6 — waves 1-4 whole, plus the one file of wave 5 that S6 owns. */
+/** Every file of rows S1..S6 — waves 1-4 whole, plus the two files of wave 5 that S6 owns. */
 const FILES = {
   'framework/ApiTests.sln': `Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F}") = "PetClinic.ApiTests", "src\\PetClinic.ApiTests\\PetClinic.ApiTests.csproj"
@@ -121,6 +121,13 @@ Project("{FAE04EC0-301F}") = "PetClinic.ApiTests", "src\\PetClinic.ApiTests\\Pet
     public void EnsureStatus(HttpStatusCode expected) { }
 }
 `,
+  [`${PROJECT}/Tests/Unit/ApiResponseTests.cs`]: `[TestFixture, Category("Unit")]
+public sealed class ApiResponseTests
+{
+    [Test]
+    public void EnsureStatus_puts_RawContent_in_the_message() { }
+}
+`,
   [`${PROJECT}/Services/OwnersService.cs`]: `public sealed class OwnersService
 {
     private const string Route = "owners";
@@ -144,6 +151,19 @@ Project("{FAE04EC0-301F}") = "PetClinic.ApiTests", "src\\PetClinic.ApiTests\\Pet
     public static string LastName(string seed) => seed;
     public static string Telephone() => "0123456789";
     public static string Date(DateTime on) => on.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+}
+`,
+  [`${PROJECT}/Tests/Unit/UniqueDataTests.cs`]: `[TestFixture, Category("Unit")]
+public sealed class UniqueDataTests
+{
+    [Test]
+    public void LastName_appends_a_letters_only_suffix() { }
+
+    [Test]
+    public void Telephone_is_exactly_ten_digits() { }
+
+    [Test]
+    public void Dates_are_formatted_with_InvariantCulture() { }
 }
 `,
 };
@@ -203,7 +223,7 @@ test('the fixture holds exactly the manifest entries of rows S1..S6', () => {
 test('--through-row S6 is green on waves 1-4 plus S6 own file', (t) => {
   const result = check(tree(t), '--through-row', 'S6');
   assert.equal(result.status, 0, result.out);
-  assert.match(result.out, /20 entries from rows S1\.\.S6/);
+  assert.match(result.out, /22 entries from rows S1\.\.S6/);
 });
 
 test('--through-wave 5 on that same tree is red, and names the two files of later turns', (t) => {
@@ -211,7 +231,7 @@ test('--through-wave 5 on that same tree is red, and names the two files of late
   // post-turn gate used to ask, and why it could not be answered by an S6 turn.
   const result = check(tree(t), '--through-wave', '5');
   assert.equal(result.status, 1);
-  assert.match(result.out, /22 entries from waves 1\.\.5/);
+  assert.match(result.out, /24 entries from waves 1\.\.5/);
   assert.match(result.out, /Support\/ResourceTracker\.cs: missing/);
   assert.match(result.out, /Support\/ReadinessProbe\.cs: missing/);
 });
@@ -229,7 +249,7 @@ test('--through-row S6 still fails when a file of an EARLIER row is missing', (t
 test('--through-row S7 asks for exactly one more file than S6', (t) => {
   const result = check(tree(t), '--through-row', 'S7');
   assert.equal(result.status, 1);
-  assert.match(result.out, /21 entries from rows S1\.\.S7/);
+  assert.match(result.out, /23 entries from rows S1\.\.S7/);
   assert.match(result.out, /Support\/ResourceTracker\.cs: missing/);
   assert.match(result.out, /1 problem\(s\)/);
   assert.ok(!/ReadinessProbe/.test(result.out), "S8's file is outside S7's scope and must not be demanded");
@@ -246,13 +266,13 @@ test('--through-row S3 stops at S3 — a later row present on disk is not checke
 test('--through-wave 4 is green on the same tree — the question the PRE-turn gate asks', (t) => {
   const result = check(tree(t), '--through-wave', '4');
   assert.equal(result.status, 0, result.out);
-  assert.match(result.out, /19 entries from waves 1\.\.4/);
+  assert.match(result.out, /20 entries from waves 1\.\.4/);
 });
 
-test('no scope at all still means the finished framework, all 39 entries', (t) => {
+test('no scope at all still means the finished framework, all 43 entries', (t) => {
   const result = check(tree(t));
   assert.equal(result.status, 1, 'a half-built tree cannot pass the final-state check');
-  assert.match(result.out, /all 39 manifest entries/);
+  assert.match(result.out, /all 43 manifest entries/);
 });
 
 // ── Refusals: exit 2, distinct from a red gate ────────────────────────────────────────

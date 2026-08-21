@@ -14,7 +14,7 @@ findings** from the previous round — fix all of them and start nothing else.
 0. **State left by the previous iteration.** A SessionStart hook has already poured it into your
    context: first the facts it measured itself, then the journal of previous turns. Nothing there
    means you are the first iteration.
-1. 1. **`docs/design/2026-08-05-bdd-api-tests-ralph-loop-design.md` §4** — the authoritative statement of — the authoritative statement of
+1. **`docs/design/2026-08-05-bdd-api-tests-ralph-loop-design.md` §4** — the authoritative statement of
    what every file is responsible for. This is your specification.
 2. **`loop/trackers/scaffold.md`** — the task details section for your target task: the exact file
    list and the DoD.

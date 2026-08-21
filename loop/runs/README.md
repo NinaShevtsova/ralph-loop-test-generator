@@ -10,7 +10,7 @@ rubric edit reduced the rework rate, whether a prompt change cost more tokens, w
 started rejecting more than it used to.
 
 Each file holds one row per iteration — the target row, how the turn ended, the verdict, what the
-judge's call cost, how long it took — and a totals block when the run ends.
+agent turn and the judge call each cost, how long it took — and a totals block when the run ends.
 
 ## Reading them
 
@@ -21,11 +21,17 @@ judge's call cost, how long it took — and a totals block when the run ends.
   for. Those iterations are the cheap half of a rework.
 - **`refused`** — the runner's own checks stopped the turn: a rewritten tracker row, nothing
   committed, work left uncommitted. A rise here is a prompt problem, not a model problem.
-- **cost** — the judge's only. The agent's usage is not captured, because its stdio is inherited so a
-  human can watch the turn; iteration count and wall clock stand in for it.
+- **cost** — both sides, in two labelled sets of columns: `j-in`/`j-out`/`j-cost` for the judge and
+  `a-in`/`a-out`/`a-cost` for the agent. The agent's half arrives from
+  `--output-format stream-json --verbose`, which emits one JSON object per line as the turn runs — so
+  the runner relays each line to the console AND reads the cost off the last one. The agent turn is
+  usually the larger half of a run's bill, so a summary carrying only the judge's numbers understated
+  most of it.
 
 ## What is not here
 
-`total_cost_usd` appears only when `JUDGE_CMD` reports it — that is what `--output-format json` in
-the default judge command is for. A run with a different judge tool records the decisions and the
-timings, and says plainly that the usage was not reported rather than printing zeroes.
+`total_cost_usd` appears only when the tool reports it — that is what `--output-format json` in the
+default judge command and `--output-format stream-json --verbose` in the default agent command are
+for. A run with a different tool on either side records the decisions and the timings, and says
+plainly that that side's usage was not reported rather than printing zeroes: "nobody said" is not
+"it was free".

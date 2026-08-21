@@ -6,7 +6,7 @@ cannot edit files and you cannot commit.
 ## Inputs you are given
 
 - this rubric;
-- - §4 of `docs/design/2026-08-05-bdd-api-tests-ralph-loop-design.md` — the authoritative statement of — the authoritative statement of
+- §4 of `docs/design/2026-08-05-bdd-api-tests-ralph-loop-design.md` — the authoritative statement of
   what each file is responsible for;
 - the full diff of the commit under review.
 

@@ -12,9 +12,9 @@
 // its verdict AND its token usage, so the verdict has to be lifted out before anything
 // tries to read it as plain text.
 //
-// One number is deliberately missing: what the WORKER cost. Its output is shown live so a
-// human can watch the turn, and that rules out the mode that would report usage. The turn
-// count and the clock stand in for it.
+// Both sides' costs are recorded now — the worker's as well as the grader's. The worker's
+// output is still shown live, one line at a time as it arrives; it is the loop that reads
+// each line and prints it, and the last line of that stream is where its cost is written.
 // ══════════════════════════════════════════════════════════════════════════════════════
 
 // loop/telemetry.mjs — what a run cost and what it decided, as data.
@@ -28,19 +28,29 @@
 // Everything here is pure, for the same reason `tracker.mjs` is: a number that steers a decision must
 // not be able to drift because of a sloppy parser, and a run costs real money to reproduce.
 //
-// Three things are recorded, and they are NOT the same thing:
+// Four things are recorded, and they are NOT the same thing:
 //
 //   1. the judge's usage — available only when JUDGE_CMD reports it (`claude --output-format json`);
-//   2. wall-clock per phase — always available, because the runner holds the clock itself;
-//   3. the decision — verdict, gate result, and the first line of what was objected to.
+//   2. the agent's usage — likewise, from `claude --output-format stream-json --verbose`;
+//   3. wall-clock per phase — always available, because the runner holds the clock itself;
+//   4. the decision — verdict, gate result, and the first line of what was objected to.
 //
-// The AGENT's usage is deliberately absent, and that is a limitation rather than an oversight. Its
-// stdio is inherited so a human can watch the turn, which is worth more than the number would be;
-// capturing usage would mean `--output-format json` on the agent too, and then nobody sees anything
-// until the turn is over. Duration and iteration count are what stand in for it.
+// The AGENT's usage used to be absent by design: its stdio was inherited so a human could watch the
+// turn, and an inherited stream cannot be read. `--output-format stream-json` removed the choice — it
+// emits one JSON object per line AS THE TURN RUNS, so `runAgent` relays each line to the console and
+// takes `usage` and `total_cost_usd` from the final one. The price paid is that what the operator sees
+// is the runner's rendering of the turn rather than the CLI's own.
+//
+// Either number may still be missing, and a missing one is `null` and prints as `—`. AGENT_CMD and
+// JUDGE_CMD are both documented as pluggable, and a tool that does not speak the envelope must not
+// have its silence recorded as a zero: "nobody said" is not "it was free".
 
-/** Column order of the per-iteration table. Named once so the header and the rows cannot drift. */
-const COLUMNS = ['iter', 'row', 'phase', 'outcome', 'judge', 'in', 'out', 'cost', 'sec', 'note'];
+// Column order of the per-iteration table. Named once so the header and the rows cannot drift.
+//
+// The judge's numbers are prefixed `j-` and the agent's `a-`, because until this task the table had one
+// unlabelled set and a reader had to know which. Both are recorded now, and a run summary that shows
+// only one of them is a run summary that hides most of the cost: the agent turn is the larger half.
+const COLUMNS = ['iter', 'row', 'phase', 'outcome', 'judge', 'j-in', 'j-out', 'j-cost', 'a-in', 'a-out', 'a-cost', 'sec', 'note'];
 
 /**
  * The judge's stdout, split into the text the runner must parse and the usage it may record.
@@ -119,6 +129,44 @@ function usageOf(envelope) {
 const int = (value) => (Number.isInteger(value) ? value : null);
 const number = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
 
+/**
+ * The usage numbers out of an AGENT's stream, or `null`.
+ *
+ * Deliberately not `parseJudgeReply`, and the difference is measured rather than stylistic. That
+ * function requires `result` to be a **string**, which is right for the judge — the verdict IS that
+ * field, and `String(anObject)` would hand `parseVerdict` the text `[object Object]`. Nothing reads
+ * `result` for the agent; only the numbers beside it. Reusing the judge's guard therefore threw away
+ * the cost of four realistic shapes, measured with stubs:
+ *
+ *   {"type":"result","subtype":"error_max_turns","is_error":true,"usage":{…}}   -> was null
+ *   {"type":"result","result":{"code":"…"},"usage":{…}}                          -> was null
+ *   the envelope followed by any non-JSON line                                  -> was null
+ *   the envelope followed by any further JSON line                              -> was null
+ *
+ * The first is the one that matters: a turn that ran out of turns still cost what it cost, and a
+ * summary row reading `a-cost: —` for it understates exactly the turns worth understanding.
+ *
+ * Scans lines from the END and takes the first object carrying `usage` or `total_cost_usd`, so a
+ * shutdown line after the envelope cannot displace it. Returns `null` — never zeroes — when nothing
+ * reported anything: a zero cost is a claim about a run, and "nobody said" is not that claim.
+ */
+export function parseAgentUsage(stdout) {
+  const lines = (stdout ?? '').split('\n').reverse();
+  for (const line of lines) {
+    const text = line.trim();
+    if (!text.startsWith('{')) continue;
+    try {
+      const parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== 'object') continue;
+      if (parsed.usage === undefined && parsed.total_cost_usd === undefined) continue;
+      return usageOf(parsed);
+    } catch {
+      /* not this line */
+    }
+  }
+  return null;
+}
+
 /** Adds two usage records. `null` is absorbed, so a run mixing tools still totals what it knows. */
 export function addUsage(left, right) {
   if (!left) return right ?? null;
@@ -182,9 +230,11 @@ export function summaryRow({
   outcome,
   verdict = '',
   usage = null,
+  agentUsage = null,
   seconds = null,
   note = '',
 }) {
+  const cost = (value) => (value === null || value.costUsd === null ? '—' : `$${value.costUsd.toFixed(4)}`);
   const values = [
     String(iteration),
     row,
@@ -193,7 +243,10 @@ export function summaryRow({
     verdict || '—',
     usage === null ? '—' : tokens(usage),
     usage?.outputTokens ?? '—',
-    usage?.costUsd === null || usage === null ? '—' : `$${usage.costUsd.toFixed(4)}`,
+    cost(usage),
+    agentUsage === null ? '—' : tokens(agentUsage),
+    agentUsage?.outputTokens ?? '—',
+    cost(agentUsage),
     seconds === null ? '—' : seconds.toFixed(0),
     cell(note),
   ];
@@ -243,7 +296,15 @@ export function usageLine(usage) {
  * Ctrl-C keeps every row it earned and simply has no totals — an honest missing number rather than a
  * total that counts half a run.
  */
-export function summaryTotals({ iterations, rows, usage, wallSeconds, reason, counts }) {
+export function summaryTotals({
+  iterations,
+  rows,
+  usage,
+  agentUsage = null,
+  wallSeconds,
+  reason,
+  counts,
+}) {
   const outcomes = new Map();
   for (const outcome of rows) outcomes.set(outcome, (outcomes.get(outcome) ?? 0) + 1);
 
@@ -260,10 +321,8 @@ export function summaryTotals({ iterations, rows, usage, wallSeconds, reason, co
       : []),
     `- outcomes: ${[...outcomes].map(([name, n]) => `${n} ${name}`).join(' · ') || 'none'}`,
     `- judge usage: ${usage ? usageLine(usage) : 'not reported by this JUDGE_CMD'}`,
+    `- agent usage: ${agentUsage ? usageLine(agentUsage) : 'not reported by this AGENT_CMD'}`,
     `- wall clock: ${Math.round(wallSeconds)} s`,
-    '',
-    '> The agent\'s token usage is not captured: its stdio is inherited so the run can be watched.',
-    '> Iterations and wall clock stand in for it.',
     '',
   ].join('\n');
 }

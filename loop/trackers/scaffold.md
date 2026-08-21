@@ -24,7 +24,7 @@
 | S11 | wave-6 | BDD wiring: hooks, DI registration, non-parallelisable assembly | done |
 | S12 | wave-7 | The 22 request steps, grouped by domain | done |
 | S13 | wave-8 | Feature file skeletons for F-01, F-02, F-03 | done |
-| S14 | wave-8 | The three smoke tests and their data file | done |
+| S14 | wave-8 | The three smoke tests, the wiring canary, and their data files | done |
 
 **Total:** 14 tasks in 8 waves.
 
@@ -67,9 +67,15 @@ The `Visit` request body must be buildable **without** `id`: submitting `id` giv
 
 ### S4 — HTTP core
 
-**Files:** `PROJECT/Http/RequestSpec.cs`, `RequestSpecBuilder.cs`, `ApiResponse.cs`, `ApiClient.cs`
+**Files:** `PROJECT/Http/RequestSpec.cs`, `RequestSpecBuilder.cs`, `ApiResponse.cs`, `ApiClient.cs`,
+`PROJECT/Tests/Unit/ApiResponseTests.cs`
 
 **DoD:** a smoke call to `GET /pettypes` through `ApiClient` returns 200.
+`Tests/Unit/ApiResponseTests.cs` proves by running, not by inspection, that `EnsureStatus` throws with
+**both** codes and the response body in the message, and that it is silent on the expected code. Every
+one of the twenty scenarios routes its response-code checks through this one method, so a failure that
+does not show the body costs its reader a reproduction. Mark the fixture `[Category("Unit")]`: the gate
+runs these before the SUT exists, so they must need no HTTP and no Docker.
 
 `RequestSpec` is the reusable request specification: base URL, default `Content-Type` and `Accept`
 of `application/json`, timeout. Immutable, with a static `Default(TestSettings)`. `ApiClient` owns
@@ -93,15 +99,30 @@ by **two** routes (`POST /owners/{ownerId}/pets/{petId}/visits` and `POST /visit
 
 ### S6 — UniqueData
 
-**Files:** `PROJECT/Support/UniqueData.cs`
+**Files:** `PROJECT/Support/UniqueData.cs`, `PROJECT/Tests/Unit/UniqueDataTests.cs`
 
-**DoD:** unit checks prove `LastName("Testowner")` appends a **letters-only** suffix and stays
-within 30 characters; `Telephone()` returns exactly 10 digits; `PetName()` stays within 30;
-`PetTypeName()` within 80; every date is formatted `yyyy-MM-dd` with `InvariantCulture`.
+**DoD:** `Tests/Unit/UniqueDataTests.cs` proves, by running: `LastName("Testowner")` appends a
+**letters-only** suffix and stays within 30 characters; `LastName` trims an over-long base rather than
+overflowing; `Telephone()` returns exactly 10 digits; `PetName` stays within 30 and `PetTypeName`
+within 80; **repeated calls do not collide**; and `Date` formats `yyyy-MM-dd` **with
+`CultureInfo.CurrentCulture` set to `uk-UA`**, restoring the culture in a `finally`. Mark the fixture
+`[Category("Unit")]`.
 
 Why each constraint exists: digits in a last name are rejected with `400` (§10.5); a telephone of
 11–20 digits passes schema validation and then fails with `500` on save (§11); on a `uk-UA` machine
 a culture-sensitive `ToString()` produces `14.05.2020` and the request is rejected.
+
+**On "repeated calls do not collide", which is the one a plausible design gets wrong.** Measured
+against the scaffold this requirement was written for: `Telephone()` returned **11 to 24 duplicates out
+of 50 consecutive calls**, and `LastName` 10 to 22. The cause was a token built as
+`Interlocked.Increment(ref _counter) ^ DateTime.UtcNow.Ticks` — both operands move in the same low
+bits, so the XOR destroys the counter's monotonicity and two calls collide outright (counter 2 with
+ticks 4, and counter 3 with ticks 5, both yield 6). Spaced a millisecond apart it produced no
+duplicates at all, which is why twenty integration scenarios at HTTP cadence never caught it and a
+judge reading the code never saw it.
+
+Do not combine a counter and a clock with XOR. A monotonically increasing token — the counter in the
+high bits, or a per-process random base plus the counter — satisfies this in one line.
 
 ### S7 — ResourceTracker
 
@@ -144,13 +165,31 @@ taken from the scenario's `@AC-Fxx-yy` tag via `ScenarioContext`. Never a hand-w
 Reqnroll's generated test-method names are mangled, which is why the tag — not the method name — is
 the stable key (D-15).
 
+The data **file** is resolved by the feature's flow tag, not from a hard-coded map: a feature tagged
+`@F01` reads the one file in `Data/` whose name starts with `F01`. Exactly one match is required —
+zero and several both throw, naming the tag and the count. A closed map would mean a flow added after
+this stage cannot be given data at all, because `TestData/` is outside the stage-1 fence and no
+stage-1 turn may edit this class.
+
 ### S11 — BDD wiring
 
 **Files:** `PROJECT/Hooks/ScenarioHooks.cs`, `PROJECT/AssemblyInfo.cs`
 
-**DoD:** `[BeforeTestRun]` waits for readiness; `[BeforeScenario(Order = 0)]` registers the four
-services and `ApiClient.Shared` in `IObjectContainer`; `[AfterScenario]` calls
-`ResourceTracker.Drain()`; `AssemblyInfo.cs` carries `[assembly: NonParallelizable]`.
+**DoD:** `[BeforeScenario(Order = 0)]` registers the four services and `ApiClient.Shared` in
+`IObjectContainer`; `[AfterScenario]` calls `ResourceTracker.Drain()`; `AssemblyInfo.cs` carries
+`[assembly: NonParallelizable]`.
+
+Readiness is awaited in `[BeforeScenario(Order = -1)]`, memoised behind a `Lazy<Task>` — **not** in
+`[BeforeTestRun]`. Reqnroll generates an assembly-level `[SetUpFixture]` that runs for any test run in
+the assembly, so a `[BeforeTestRun]` probe makes even `dotnet test --filter TestCategory=Unit` wait out
+the readiness budget: measured at 96 s and red with the container stopped. A unit test has no scenario,
+so a scenario hook never fires for it, while the twenty BDD scenarios still get a ready API. The three
+smoke tests keep their own `[OneTimeSetUp]` probe and are unaffected either way.
+
+This is enforced, not merely asked for: I7 in `scripts/invariants.mjs` refuses `[BeforeTestRun]` and a
+hand-written `[SetUpFixture]` anywhere in the assembly, and it is in scope for this row's gate. The
+manifest's `Lazy<Task>` probe cannot do it — a probe requires a marker, it cannot forbid one, so a file
+carrying both would pass every probe on it.
 
 Parallel execution is forbidden (§10.7): the tests share one database and assertions on collection
 counts would become non-deterministic.
@@ -169,16 +208,17 @@ Sentences are in domain language: `the owner details are opened`, not `GET owner
 
 ### S13 — Feature skeletons
 
-**Files:** `PROJECT/Features/F01-owner-lifecycle.feature`,
-`F02-owner-pet-lifecycle.feature`, `F03-pet-visit-flow.feature`
+**Files:** one feature file per flow, in `PROJECT/Features/`, named after that flow's slug.
 
-**DoD:** each file has a `Feature:` header, the flow tag (`@F01`/`@F02`/`@F03`) and a short
-description taken from the flow's "What the flow verifies" section. **No scenarios yet** — stage 1
-appends those, one per iteration.
+**DoD:** the flow list in scripts/flows.mjs decides how many files there are — three today. Each has a
+`Feature:` header, its flow tag (`@F01`/`@F02`/`@F03`, one per file) and a short description taken
+from that flow's "What the flow verifies" section. **No scenarios yet** — stage 1 appends those, one
+per iteration, and creates the file itself if a flow was added after this stage ran.
 
 ### S14 — Smoke suite
 
-**Files:** `PROJECT/Tests/Smoke/FrameworkSmokeTests.cs`, `PROJECT/Data/FrameworkSmokeTests.json`
+**Files:** `PROJECT/Tests/Smoke/FrameworkSmokeTests.cs`, `PROJECT/Data/FrameworkSmokeTests.json`,
+`PROJECT/Tests/Smoke/F00-framework-wiring.feature`, `PROJECT/Data/F00-framework-wiring.json`
 
 **DoD:** three plain NUnit tests, all green. They are **not** AC tests, carry no AC id and never
 appear in the traceability — they prove the three mechanisms all 20 scenarios depend on:
@@ -188,6 +228,31 @@ appear in the traceability — they prove the three mechanisms all 20 scenarios 
 | `Smoke_full_chain_through_services` | `GET /pettypes` → `POST /owners` → `POST /owners/{id}/pets` → `POST .../visits`, then read every entity back |
 | `Smoke_tracker_cleans_up_in_order` | drain order, `404` swallowed, second drain safe |
 | `Smoke_data_resolves_by_method_name` | the provider finds its block in `Data/FrameworkSmokeTests.json` |
+
+Plus **the canary**: one Gherkin scenario in `Tests/Smoke/F00-framework-wiring.feature`, tagged `@F00`
+on the `Feature:` line and `@AC-F00-01` on the scenario, whose steps are **existing request steps
+only** — it adds no step definition, so it cannot collide with a stage-1 sentence or appear in
+`loop/STEPS.md`. Its data lives in `Data/F00-framework-wiring.json` under the key `AC-F00-01`; the file
+name starts with the flow tag because that is how S10's provider finds it, so no map entry and no C#
+change are needed.
+
+Why it exists: the three smoke tests are plain NUnit and reach `TestDataProvider` through an internal
+seam, so `ResolveFeatureFile`, `ResolveAcTag`, the `BeforeScenario` registrations, `ScenarioState`, the
+22 request steps and the `AfterScenario` drain through the container are otherwise **never executed in
+stage 0 at all** — their first run would be inside stage 1's first paid iteration, which is also the
+iteration that becomes the exemplar every later one copies.
+
+It must not pass vacuously: disabling the `BeforeScenario` hook in `ScenarioHooks` — or commenting out
+all five of its `RegisterInstanceAs` calls — has to turn it red. Removing a *single* registration does
+**not**, and that is not a defect in the canary: Reqnroll's BoDi container constructs any concrete type
+whose constructor arguments it can already resolve, so each service is simply rebuilt from the still
+registered `ApiClient`. Measured on this framework: the four service registrations and the `ApiClient`
+one are each individually removable with the canary still green, while the one-line removal of
+`[BeforeScenario(Order = 0)]` fails it with `Circular dependency found! System.Uri (resolution path:
+OwnerSteps->OwnersService->ApiClient->RestSharp.RestClient->System.Uri)`.
+
+The file lives outside `Features/` deliberately. `scripts/check-tests.mjs` counts the scenarios in that
+directory against the tracker's `done` rows, and `Tests/` is outside the stage-1 fence.
 
 ---
 
