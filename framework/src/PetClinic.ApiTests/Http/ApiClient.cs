@@ -1,0 +1,38 @@
+using PetClinic.ApiTests.Config;
+using RestSharp;
+
+namespace PetClinic.ApiTests.Http;
+
+// Owns the ONE RestClient for the whole run. No service, step or test may `new RestClient` — every
+// call goes through ApiClient.Shared, which is what keeps the connection pool, base URL and timeout
+// in exactly one place (design §4, rubric item 1).
+public sealed class ApiClient
+{
+    private readonly RestClient _client;
+
+    private ApiClient(RequestSpec spec)
+    {
+        _client = new RestClient(new RestClientOptions(spec.BaseUrl)
+        {
+            Timeout = TimeSpan.FromMilliseconds(spec.TimeoutMs),
+        });
+    }
+
+    public static ApiClient Shared { get; } = new(RequestSpec.Default(SettingsLoader.Load()));
+
+    public Task<ApiResponse<T>> GetAsync<T>(RestRequest request) => ExecuteAsync<T>(request);
+
+    public Task<ApiResponse<T>> PostAsync<T>(RestRequest request) => ExecuteAsync<T>(request);
+
+    // PUT and DELETE answer 204 with an empty body (§7 of context-and-conventions.md) — the caller
+    // verifies the result with a subsequent GET, so these return no typed body to deserialize.
+    public Task<ApiResponse<object?>> PutAsync(RestRequest request) => ExecuteAsync<object?>(request);
+
+    public Task<ApiResponse<object?>> DeleteAsync(RestRequest request) => ExecuteAsync<object?>(request);
+
+    private async Task<ApiResponse<T>> ExecuteAsync<T>(RestRequest request)
+    {
+        var response = await _client.ExecuteAsync<T>(request);
+        return new ApiResponse<T>(response.StatusCode, response.Data, response.Content, response.Headers);
+    }
+}
