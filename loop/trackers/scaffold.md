@@ -19,8 +19,8 @@
 | S6 | wave-5 | UniqueData: letters-only suffix, 10-digit telephone, invariant dates | done |
 | S7 | wave-5 | ResourceTracker: drain in the mandatory order, swallow only 404 | done |
 | S8 | wave-5 | ReadinessProbe: poll until ready, never restart anything | done |
-| S9 | wave-6 | ScenarioState: scenario-scoped state for every request step | review |
-| S10 | wave-6 | TestDataProvider and the case POCOs, keyed by the AC tag | todo |
+| S9 | wave-6 | ScenarioState: scenario-scoped state for every request step | done |
+| S10 | wave-6 | TestDataProvider and the case POCOs, keyed by the AC tag | review |
 | S11 | wave-6 | BDD wiring: hooks, DI registration, non-parallelisable assembly | todo |
 | S12 | wave-7 | The 22 request steps, grouped by domain | todo |
 | S13 | wave-8 | Feature file skeletons for F-01, F-02, F-03 | todo |
