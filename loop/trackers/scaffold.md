@@ -14,8 +14,8 @@
 | S1 | wave-1 | Solution skeleton, csproj, build props, appsettings, reqnroll config | done |
 | S2 | wave-2 | Config: typed settings and the loader with an env override | done |
 | S3 | wave-2 | Models: Owner, Pet, PetType, Visit | done |
-| S4 | wave-3 | HTTP core: RequestSpec, RequestSpecBuilder, ApiResponse, ApiClient | review |
-| S5 | wave-4 | Services: all 22 routes of the conventions table | todo |
+| S4 | wave-3 | HTTP core: RequestSpec, RequestSpecBuilder, ApiResponse, ApiClient | done |
+| S5 | wave-4 | Services: all 22 routes of the conventions table | review |
 | S6 | wave-5 | UniqueData: letters-only suffix, 10-digit telephone, invariant dates | todo |
 | S7 | wave-5 | ResourceTracker: drain in the mandatory order, swallow only 404 | todo |
 | S8 | wave-5 | ReadinessProbe: poll until ready, never restart anything | todo |
