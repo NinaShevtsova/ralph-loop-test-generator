@@ -75,14 +75,15 @@ public sealed class OwnerSteps
     public async Task UpdateOwnerDetailsAsync()
     {
         var owner = RequireOwner();
+        var newTelephone = UniqueData.Telephone();
         var updated = new Owner
         {
             Id = owner.Id,
             FirstName = owner.FirstName,
-            LastName = UniqueData.LastName(owner.LastName),
+            LastName = owner.LastName,
             Address = owner.Address,
-            City = owner.City,
-            Telephone = owner.Telephone,
+            City = $"UpdatedCity{newTelephone}",
+            Telephone = newTelephone,
         };
 
         var response = await _owners.Update(owner.Id!.Value, updated);
