@@ -76,20 +76,28 @@ public sealed class OwnerSteps
     {
         var owner = RequireOwner();
         var newTelephone = UniqueData.Telephone();
-        var updated = new Owner
+        var newCity = $"UpdatedCity{newTelephone}";
+        var requestBody = new Owner
+        {
+            FirstName = owner.FirstName,
+            LastName = owner.LastName,
+            Address = owner.Address,
+            City = newCity,
+            Telephone = newTelephone,
+        };
+
+        var response = await _owners.Update(owner.Id!.Value, requestBody);
+        response.EnsureStatus(HttpStatusCode.NoContent);
+
+        _state.CreatedOwner = new Owner
         {
             Id = owner.Id,
             FirstName = owner.FirstName,
             LastName = owner.LastName,
             Address = owner.Address,
-            City = $"UpdatedCity{newTelephone}",
+            City = newCity,
             Telephone = newTelephone,
         };
-
-        var response = await _owners.Update(owner.Id!.Value, updated);
-        response.EnsureStatus(HttpStatusCode.NoContent);
-
-        _state.CreatedOwner = updated;
         _state.LastResponse = response;
     }
 

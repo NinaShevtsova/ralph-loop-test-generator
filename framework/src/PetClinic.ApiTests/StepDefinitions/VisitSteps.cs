@@ -94,18 +94,23 @@ public sealed class VisitSteps
     public async Task UpdateVisitDetailsAsync()
     {
         var visit = RequireVisit();
-        var updated = new Visit
+        var newDescription = UniqueData.VisitDescription(visit.Description);
+        var requestBody = new Visit
         {
-            Id = visit.Id,
-            PetId = visit.PetId,
-            Description = UniqueData.VisitDescription(visit.Description),
+            Description = newDescription,
             Date = visit.Date,
         };
 
-        var response = await _visits.Update(visit.Id!.Value, updated);
+        var response = await _visits.Update(visit.Id!.Value, requestBody);
         response.EnsureStatus(HttpStatusCode.NoContent);
 
-        _state.CreatedVisit = updated;
+        _state.CreatedVisit = new Visit
+        {
+            Id = visit.Id,
+            PetId = visit.PetId,
+            Description = newDescription,
+            Date = visit.Date,
+        };
         _state.LastResponse = response;
     }
 
