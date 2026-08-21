@@ -1,6 +1,5 @@
 using PetClinic.ApiTests.Http;
 using PetClinic.ApiTests.Models;
-using RestSharp;
 
 namespace PetClinic.ApiTests.Services;
 
@@ -8,24 +7,20 @@ namespace PetClinic.ApiTests.Services;
 // Create, Read and Delete are used in the ACs.
 public sealed class PetTypesService
 {
-    private readonly ApiClient _client;
+    private readonly RouteClient _client;
 
     public PetTypesService(ApiClient client)
     {
-        _client = client;
+        _client = new RouteClient(client);
     }
 
-    public Task<ApiResponse<PetType>> Create(PetType petType) =>
-        _client.PostAsync<PetType>(_client.NewRequest(Method.Post).WithPath("pettypes").WithBody(petType).Build());
+    public Task<ApiResponse<PetType>> Create(PetType petType) => _client.Post<PetType>("pettypes", petType);
 
-    public Task<ApiResponse<List<PetType>>> GetAll() =>
-        _client.GetAsync<List<PetType>>(_client.NewRequest(Method.Get).WithPath("pettypes").Build());
+    public Task<ApiResponse<List<PetType>>> GetAll() => _client.Get<List<PetType>>("pettypes");
 
     public Task<ApiResponse<PetType>> GetById(int petTypeId) =>
-        _client.GetAsync<PetType>(_client.NewRequest(Method.Get)
-            .WithPath("pettypes/{petTypeId}").WithPathParam("petTypeId", petTypeId).Build());
+        _client.Get<PetType>("pettypes/{petTypeId}", ("petTypeId", petTypeId));
 
     public Task<ApiResponse<object?>> Delete(int petTypeId) =>
-        _client.DeleteAsync(_client.NewRequest(Method.Delete)
-            .WithPath("pettypes/{petTypeId}").WithPathParam("petTypeId", petTypeId).Build());
+        _client.Delete("pettypes/{petTypeId}", ("petTypeId", petTypeId));
 }
