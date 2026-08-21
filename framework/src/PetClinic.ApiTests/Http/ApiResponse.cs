@@ -4,8 +4,8 @@ using RestSharp;
 namespace PetClinic.ApiTests.Http;
 
 // EnsureStatus is the one place every one of the twenty scenarios routes its response-code checks
-// through (design §4.2, rubric item 9): a wrong code fails at the request site with the body in the
-// message, instead of surfacing two steps later as a NullReferenceException on a null Body.
+// through: a wrong code fails at the request site with the body in the message, instead of
+// surfacing two steps later as a NullReferenceException on a null Body.
 public sealed class ApiResponse<T>
 {
     public HttpStatusCode StatusCode { get; }

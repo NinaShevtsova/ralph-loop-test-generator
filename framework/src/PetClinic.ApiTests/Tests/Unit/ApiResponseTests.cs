@@ -7,8 +7,8 @@ namespace PetClinic.ApiTests.Tests.Unit;
 
 // Proves, by running rather than by inspection, the one property every one of the twenty scenarios
 // relies on: EnsureStatus is silent on the expected code and throws with both codes and the
-// response body on a mismatch (design §4, rubric item 9). No HTTP, no Docker — [Category("Unit")]
-// so the gate can run this before the SUT exists.
+// response body on a mismatch. No HTTP, no Docker — [Category("Unit")] so the gate can run this
+// before the SUT exists.
 [TestFixture]
 [Category("Unit")]
 public sealed class ApiResponseTests

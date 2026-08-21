@@ -5,13 +5,14 @@ namespace PetClinic.ApiTests.Http;
 
 // Owns the ONE RestClient for the whole run. No service, step or test may `new RestClient` — every
 // call goes through ApiClient.Shared, which is what keeps the connection pool, base URL and timeout
-// in exactly one place (design §4, rubric item 1).
+// in exactly one place.
 public sealed class ApiClient
 {
     private readonly RestClient _client;
 
     private ApiClient(RequestSpec spec)
     {
+        Spec = spec;
         _client = new RestClient(new RestClientOptions(spec.BaseUrl)
         {
             Timeout = TimeSpan.FromMilliseconds(spec.TimeoutMs),
@@ -19,6 +20,12 @@ public sealed class ApiClient
     }
 
     public static ApiClient Shared { get; } = new(RequestSpec.Default(SettingsLoader.Load()));
+
+    // The spec this client was configured from, kept as the single instance every request is built
+    // from — a service builds its requests via NewRequest rather than re-loading settings itself.
+    public RequestSpec Spec { get; }
+
+    public RequestSpecBuilder NewRequest(Method method) => new(Spec, method);
 
     public Task<ApiResponse<T>> GetAsync<T>(RestRequest request) => ExecuteAsync<T>(request);
 

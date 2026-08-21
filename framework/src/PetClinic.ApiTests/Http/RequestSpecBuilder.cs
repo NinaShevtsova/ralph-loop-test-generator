@@ -62,7 +62,7 @@ public sealed class RequestSpecBuilder
 
         if (_body is not null)
         {
-            request.AddJsonBody(_body);
+            request.AddJsonBody(_body, _spec.ContentType);
         }
 
         return request;
