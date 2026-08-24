@@ -126,5 +126,25 @@
       "name": "Pet",
       "birthDate": "2015-06-30"
     }
+  },
+  "AC-F02-10": {
+    "petType": {
+      "name": "Type"
+    },
+    "owner": {
+      "firstName": "Mykola",
+      "lastName": "Hrytsenko",
+      "address": "16 Yavornytskoho Street",
+      "city": "Dnipro",
+      "telephone": "0931234568"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2018-02-11"
+    },
+    "visit": {
+      "description": "Vaccination booster qwerty",
+      "date": "2026-04-05"
+    }
   }
 }

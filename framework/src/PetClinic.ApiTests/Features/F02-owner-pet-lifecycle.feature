@@ -122,3 +122,22 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     Then the pet addition to the deleted owner returns no pet data
     When the pets directory is requested
     Then the pet from the failed addition is missing from the pets list
+
+  @AC-F02-10 @US-03
+  Scenario: AC-F02-10 deleting a pet removes the visits but preserves the owner and the pet types directory
+    Given a pet type is added to the directory
+    And an owner is registered
+    And a pet is added to the owner
+    And a visit is recorded for the pet
+    When the pet is deleted
+    Then the pet deletion returns no pet data
+    When an attempt is made to open the pet details
+    Then the pet details are no longer available
+    When an attempt is made to open the visit details
+    Then the visit details are no longer available
+    When the owner details are opened
+    Then the owner details show the submitted values and match the registration response
+    When the pet type details are opened
+    Then the pet type exists, unchanged
+    When the visits log is requested
+    Then the visit is missing from the visits list

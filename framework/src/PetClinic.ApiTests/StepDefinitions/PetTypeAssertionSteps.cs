@@ -30,4 +30,21 @@ public sealed class PetTypeAssertionSteps
 
         directory.Should().NotBeEmpty("a pet cannot be given a type if the directory has none to offer");
     }
+
+    // AC-F02-10 step 5: this AC creates its own pet type ("a pet type is added to the directory",
+    // §10.9) precisely so the assertion below can compare against PetTypeCreateResponse -- the
+    // POST's own body -- rather than a shared directory entry another test could have mutated.
+    // Deleting the pet must leave this record exactly as it was created.
+    [Then("the pet type exists, unchanged")]
+    public void ThePetTypeExistsUnchanged()
+    {
+        var fetched = _state.Get<ApiResponse<PetType>>("PetTypeGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /pettypes/{petTypeId} answered 200 with no body.");
+        var created = _state.Get<ApiResponse<PetType>>("PetTypeCreateResponse").Body
+            ?? throw new InvalidOperationException("POST /pettypes answered 201 with no body.");
+        var petTypeId = fetched.Id;
+
+        fetched.Id.Should().Be(created.Id, $"pet type {petTypeId} must still be reachable by the same id after its pet was deleted");
+        fetched.Name.Should().Be(created.Name, $"pet type {petTypeId}'s name must be unchanged after its pet was deleted");
+    }
 }
