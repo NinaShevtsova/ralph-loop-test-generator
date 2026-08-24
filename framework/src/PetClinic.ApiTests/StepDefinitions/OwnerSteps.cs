@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json.Serialization;
 using PetClinic.ApiTests.Http;
 using PetClinic.ApiTests.Models;
 using PetClinic.ApiTests.Services;
@@ -8,6 +9,18 @@ using PetClinic.ApiTests.TestData.Cases;
 using Reqnroll;
 
 namespace PetClinic.ApiTests.StepDefinitions;
+
+// AC-F01-02's own "new city and telephone" (data block key "ownerContacts", TestDataProvider's
+// naming convention for a case type stripped of its "Case" suffix). Lives here rather than under
+// TestData/Cases because that folder is outside the stage-1 fence; this AC is the only caller.
+internal sealed class OwnerContactsCase
+{
+    [JsonPropertyName("city")]
+    public string City { get; set; } = string.Empty;
+
+    [JsonPropertyName("telephone")]
+    public string Telephone { get; set; } = string.Empty;
+}
 
 // The 8 request steps of §7 that OwnersService exposes (design D-13): the direct owner routes plus
 // the two nested pet routes §7 places on the owner rather than on PetsService. Nothing here derives
@@ -74,23 +87,24 @@ public sealed class OwnerSteps
     // body built here never carries the read-only `id`. The only owner-update AC in the flows
     // (F-01) changes `city` and `telephone` and keeps `firstName`/`lastName`/`address` from the
     // previous state — the one shape this single generic step can ever be asked for, since there is
-    // no per-AC parameter here to vary it. UniqueData has no city helper (city carries no character
-    // constraint of its own), so PetTypeName's 80-char, collision-free suffix generator is reused
-    // for it rather than inventing a second one just for this field.
+    // no per-AC parameter here to vary it. The new city/telephone are the AC's own "ownerContacts"
+    // data block, not a suffixed copy of the registration city: the AC's Given asks for values
+    // "prepared per the Test data — owner table", and a value invented at call time would leave the
+    // data file with no view of what the update actually submits.
     [When("the owner's details are updated")]
     public async Task TheOwnersDetailsAreUpdated()
     {
         var existing = _state.CreatedOwner;
         var ownerId = existing.Id ?? throw new InvalidOperationException("Owner has no id to update.");
-        var data = _data.For<OwnerCase>();
+        var newContacts = _data.For<OwnerContactsCase>();
 
         var updated = new Owner
         {
             FirstName = existing.FirstName,
             LastName = existing.LastName,
             Address = existing.Address,
-            City = UniqueData.PetTypeName(data.City),
-            Telephone = UniqueData.Telephone(),
+            City = newContacts.City,
+            Telephone = newContacts.Telephone,
         };
 
         var response = (await _owners.Update(ownerId, updated)).EnsureStatus(HttpStatusCode.NoContent);

@@ -82,6 +82,17 @@ public sealed class OwnerAssertionSteps
         listed.Telephone.Should().Be(created.Telephone, $"owner {ownerId}'s entry in the owners list must carry the registered telephone");
     }
 
+    // AC-F01-02 step 1: EnsureStatus inside the When step already covers "code 204"; this is the
+    // AC's other half -- "the response body is empty" -- which §7 states for every PUT and which
+    // was otherwise never checked, since OwnerUpdateResponse was written to ScenarioState but never
+    // read back by any step.
+    [Then("the owner update returns no response body")]
+    public void TheOwnerUpdateReturnsNoResponseBody()
+    {
+        var response = _state.Get<ApiResponse<object?>>("OwnerUpdateResponse");
+        response.RawContent.Should().BeNullOrEmpty("a PUT must answer with an empty body (§7)");
+    }
+
     // AC-F01-02 step 2: the new city/telephone are compared against OwnerUpdateRequest -- the exact
     // body OwnerSteps.cs put on the wire, per the same "compare against what was submitted" rule
     // iteration 2 established for registration -- while firstName/lastName/address are compared

@@ -15,6 +15,10 @@
       "address": "45 Franka Street",
       "city": "Kyiv",
       "telephone": "0671234567"
+    },
+    "ownerContacts": {
+      "city": "Odesa",
+      "telephone": "0997654321"
     }
   }
 }
