@@ -312,6 +312,7 @@ public sealed class OwnerAssertionSteps
         var ownerId = owner.Id;
 
         owner.Pets.Should().NotBeNull($"owner {ownerId}'s response must carry a pets field")
+            .And.HaveCount(1, $"owner {ownerId} must show only the second pet after the first was deleted, not both")
             .And.ContainSingle(p => p.Id == second.Id,
                 $"owner {ownerId}'s details must show exactly the second pet {second.Id} after the first was deleted");
 

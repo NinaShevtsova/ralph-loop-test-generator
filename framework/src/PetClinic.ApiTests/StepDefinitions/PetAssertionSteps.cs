@@ -229,9 +229,13 @@ public sealed class PetAssertionSteps
 
     // AC-F02-06 step 4: EnsureStatus inside "the first pet is deleted" already covers "code 204";
     // this is the other half §7 states for every DELETE — the same "empty body" check this file
-    // already applies to updates, now for a delete response.
-    [Then("the pet deletion returns no pet data")]
-    public void ThePetDeletionReturnsNoPetData()
+    // already applies to updates, now for a delete response. Named for the first pet specifically
+    // (mirroring "the pet update through the owner details returns no pet data" alongside the
+    // generic "the pet update returns no pet data") because it reads PetDeleteFirstResponse, which
+    // only "the first pet is deleted" ever writes — the generic "the pet deletion returns no pet
+    // data" name is left free for "the pet is deleted" (PetDeleteResponse) to claim later.
+    [Then("the first pet's deletion returns no pet data")]
+    public void TheFirstPetsDeletionReturnsNoPetData()
     {
         var first = _state.Get<ApiResponse<Pet>>("OwnerAddPetResponse").Body
             ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");

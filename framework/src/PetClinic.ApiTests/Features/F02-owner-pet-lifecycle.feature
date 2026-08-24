@@ -80,7 +80,7 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     When the owner details are opened
     Then the owner details show both pets with their own names
     When the first pet is deleted
-    Then the pet deletion returns no pet data
+    Then the first pet's deletion returns no pet data
     When the owner details are opened
     Then the owner details show only the second pet with its original name
     When the pet details are opened
