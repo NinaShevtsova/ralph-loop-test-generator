@@ -116,4 +116,15 @@ public sealed class VisitSteps
         var response = (await _visits.Delete(visitId)).EnsureStatus(HttpStatusCode.NoContent);
         _state.Set("VisitDeleteResponse", response);
     }
+
+    // AC-F01-04 step 5: a GET on a visit removed along with its pet by the owner's deregistration
+    // cascade, not by "the visit is deleted". Expected code is the opposite of "the visit details
+    // are opened" (404, not 200), so this is its own step rather than a reworded one.
+    [When("an attempt is made to open the visit details")]
+    public async Task AnAttemptIsMadeToOpenTheVisitDetails()
+    {
+        var visitId = _state.CreatedVisit.Id ?? throw new InvalidOperationException("Visit has no id to open.");
+        var response = (await _visits.GetById(visitId)).EnsureStatus(HttpStatusCode.NotFound);
+        _state.Set("VisitGetByIdAfterDeleteResponse", response);
+    }
 }

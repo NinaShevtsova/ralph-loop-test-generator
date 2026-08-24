@@ -202,4 +202,27 @@ public sealed class OwnerAssertionSteps
         response.RawContent.Should().BeNullOrEmpty(
             $"a 404 for owner {ownerId}'s repeated deregistration must carry no body (§7)");
     }
+
+    // AC-F01-04 step 1: confirms the owner's just-added pet, together with that pet's own
+    // just-recorded visit, show up nested inside the owner details before the deregistration this
+    // AC exercises removes them -- the baseline the later 404 checks in PetAssertionSteps and
+    // VisitAssertionSteps are measured against.
+    [Then("the owner details show the pet with its recorded visit")]
+    public void TheOwnerDetailsShowThePetWithItsRecordedVisit()
+    {
+        var owner = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
+        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Created pet carries no id.");
+        var visitId = _state.CreatedVisit.Id ?? throw new InvalidOperationException("Created visit carries no id.");
+        var ownerId = owner.Id;
+
+        owner.Pets.Should().NotBeNull($"owner {ownerId}'s response must carry a pets field")
+            .And.ContainSingle(p => p.Id == petId,
+                $"owner {ownerId}'s details must show the pet {petId} that was just added");
+
+        var pet = owner.Pets!.Single(p => p.Id == petId);
+        pet.Visits.Should().NotBeNull($"pet {petId}'s entry in the owner details must carry a visits field")
+            .And.ContainSingle(v => v.Id == visitId,
+                $"pet {petId}'s entry in the owner details must show the visit {visitId} that was just recorded");
+    }
 }

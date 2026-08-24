@@ -36,3 +36,24 @@ Feature: F-01 Pet owner: registration, data change, deregistration
     Then the owner is missing from the owners list while other owners remain
     When the owner is deleted again
     Then the repeated deregistration reports that the owner no longer exists
+
+  @AC-F01-04 @US-01 @US-03
+  Scenario: AC-F01-04 deregistering an owner removes their pet and that pet's visits
+    Given a pet type is added to the directory
+    And an owner is registered
+    And a pet is added to the owner
+    And a visit is recorded for the pet
+    When the owner details are opened
+    Then the owner details show the pet with its recorded visit
+    When the owner is deleted
+    Then the owner deregistration returns no owner data
+    When an attempt is made to open the owner details
+    Then the owner details are no longer available
+    When an attempt is made to open the pet details
+    Then the pet details are no longer available
+    When an attempt is made to open the visit details
+    Then the visit details are no longer available
+    When the pets directory is requested
+    Then the pet is missing from the pets list
+    When the visits log is requested
+    Then the visit is missing from the visits list

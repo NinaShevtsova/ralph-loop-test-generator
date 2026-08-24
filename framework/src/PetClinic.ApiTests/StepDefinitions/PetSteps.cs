@@ -79,4 +79,15 @@ public sealed class PetSteps
         var response = (await _pets.Delete(petId)).EnsureStatus(HttpStatusCode.NoContent);
         _state.Set("PetDeleteResponse", response);
     }
+
+    // AC-F01-04 step 4: a GET on a pet removed by its owner's deregistration cascade, not by "the
+    // pet is deleted". Expected code is the opposite of "the pet details are opened" (404, not
+    // 200), so this is its own step rather than a reworded one.
+    [When("an attempt is made to open the pet details")]
+    public async Task AnAttemptIsMadeToOpenThePetDetails()
+    {
+        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id to open.");
+        var response = (await _pets.GetById(petId)).EnsureStatus(HttpStatusCode.NotFound);
+        _state.Set("PetGetByIdAfterDeleteResponse", response);
+    }
 }

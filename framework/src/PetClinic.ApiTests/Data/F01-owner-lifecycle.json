@@ -29,5 +29,25 @@
       "city": "Ternopil",
       "telephone": "0631234567"
     }
+  },
+  "AC-F01-04": {
+    "petType": {
+      "name": "Type"
+    },
+    "owner": {
+      "firstName": "Yulia",
+      "lastName": "Marchenko",
+      "address": "21 Hrushevskoho Street",
+      "city": "Poltava",
+      "telephone": "0951234567"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2020-05-14"
+    },
+    "visit": {
+      "description": "Rabies shot qwerty",
+      "date": "2026-07-01"
+    }
   }
 }
