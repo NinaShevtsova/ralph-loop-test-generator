@@ -366,6 +366,15 @@ test('a turn that never reached the judge totals the agent alone, with no + mark
   assert.doesNotMatch(row, /\$1\.4913\+/, 'nothing was silent here, so the total is not a floor');
 });
 
+test('a judge-phase row totals the judge alone, with no + marker', () => {
+  // A `review` row resumes straight at the judge in a new process, so there IS no agent turn and no
+  // cost to be missing. Found by the first resumed run, which marked exactly this row `$1.5157+` and
+  // so claimed a number had gone astray when none existed.
+  const row = summaryRow({ iteration: 1, row: 'S12', phase: 'judge', outcome: 'judged', verdict: 'REJECT', usage: J, seconds: 246 });
+  assert.match(row, /\| \$0\.9929 \|/, row);
+  assert.doesNotMatch(row, /\$0\.9929\+/, 'no agent turn happened, so nothing went unreported');
+});
+
 test('a judge that ran and reported nothing makes the total a floor, not a number', () => {
   // The distinction the whole helper exists for: `usage: null` arrives for both "never called" and
   // "called and said nothing", and reporting the second as complete would be a lie about the run.

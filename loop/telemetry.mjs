@@ -233,19 +233,24 @@ export function summaryHeader({ startedAt, stage, flow, branch, agentCmd, judgeC
  *   $2.9601    both sides reported. Exact.
  *   $3.5728    the judge was never CALLED — a red gate or a refusal ends the turn before it. Zero is
  *              the true contribution of a call that did not happen, so the sum is exact.
- *   $1.4913+   something ran and did not report its cost. The `+` says "at least this much", never a
- *              number pretending to be complete.
+ *   $1.5157    the AGENT was never run — a `review` row resumes at the judge in a new process. Exact
+ *              for the same reason: no turn, no cost.
+ *   $1.4913+   something that DID run failed to report its cost. The `+` says "at least this much",
+ *              never a number pretending to be complete.
  *   —          nothing reported anything.
  *
  * The discriminator is `verdict`, which is empty exactly when the judge never ran — already in the
  * data, so this needs no new plumbing from the runner. Without it, both cases arrive as `usage: null`
  * and the honest reading of one is a lie about the other.
  */
-function totalCost({ verdict, usage, agentUsage }) {
-  const judgeRan = verdict !== '';
+function totalCost({ phase, verdict, usage, agentUsage }) {
   const parts = [
-    { known: usage?.costUsd ?? null, expected: judgeRan },
-    { known: agentUsage?.costUsd ?? null, expected: true },
+    // The judge ran exactly when it returned a verdict.
+    { known: usage?.costUsd ?? null, expected: verdict !== '' },
+    // The agent ran exactly on an agent turn. A `review` row resumes straight at the judge, and the
+    // first resumed run marked that row `$1.5157+` — claiming a number had gone missing when no agent
+    // turn had happened at all. Real data found this within one run of the column existing.
+    { known: agentUsage?.costUsd ?? null, expected: phase === 'agent' },
   ];
 
   const reported = parts.filter((part) => part.known !== null);
@@ -280,7 +285,7 @@ export function summaryRow({
     agentUsage === null ? '—' : tokens(agentUsage),
     agentUsage?.outputTokens ?? '—',
     cost(agentUsage),
-    totalCost({ verdict, usage, agentUsage }),
+    totalCost({ phase, verdict, usage, agentUsage }),
     seconds === null ? '—' : seconds.toFixed(0),
     cell(note),
   ];

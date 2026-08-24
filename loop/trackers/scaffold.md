@@ -22,7 +22,7 @@
 | S9 | wave-6 | ScenarioState: scenario-scoped state for every request step | done |
 | S10 | wave-6 | TestDataProvider and the case POCOs, keyed by the AC tag | done |
 | S11 | wave-6 | BDD wiring: hooks, DI registration, non-parallelisable assembly | done |
-| S12 | wave-7 | The 22 request steps, grouped by domain | review |
+| S12 | wave-7 | The 22 request steps, grouped by domain | rework |
 | S13 | wave-8 | Feature file skeletons for F-01, F-02, F-03 | todo |
 | S14 | wave-8 | The three smoke tests, the wiring canary, and their data files | todo |
 
@@ -154,6 +154,20 @@ scenario, and the `ResourceTracker`. Resolved through Reqnroll's DI, one instanc
 In BDD the chain "create an owner → remember `ownerId` → use it in the next step" cannot live in a
 local variable, because the steps are different methods. This class is that memory.
 
+**Addressed by key, not by recency — a requirement, not a style preference.** A step stores a value
+under a name; any later step reads it by that name, whatever ran in between, until the scenario ends.
+
+The case that decides it, because a plausible design gets this wrong: the arrange block of **all six**
+F-03 acceptance criteria is "an owner is registered with a pet", and the chain both F-02 and F-03
+state is `GET /pettypes` → `POST /owners` → `POST /owners/{ownerId}/pets`. The pet type is fetched
+**first** and used **third**, with the owner registration in between. A holder exposing only "the last
+response" plus one fixed slot per entity cannot serve that — measured on a build that shipped exactly
+that shape, the pet step threw `InvalidOperationException` in its `Given` form, which is the form all
+six F-03 criteria need, and `Support/` is outside the stage-1 fence so no later turn could repair it.
+
+Fixed per-entity properties are fine as a convenience **on top of** the keyed store. They are not a
+substitute for it.
+
 ### S10 — TestDataProvider
 
 **Files:** `PROJECT/TestData/TestDataProvider.cs`, `PROJECT/TestData/Cases/OwnerCase.cs`,
@@ -204,6 +218,17 @@ counts would become non-deterministic.
 
 These steps contain **nothing from any AC** — they derive from the contract, which is exactly why
 they belong to stage 0 (D-13). Grouping is by domain, not by flow, so reuse across flows is natural.
+
+**The four creation sentences carry `[Given]` as well as `[When]`.** "an owner is registered", "a pet
+is added to the owner", "a visit is recorded for the pet" and "a pet type is added to the directory"
+are each the action under test for their own AC **and** the precondition of later flows. In the
+`Given` role a step may not depend on what ran immediately before it — see S9's DoD.
+
+**A request body carries only the fields §7 lists as REQUEST fields.** Read-only response fields —
+`id`, `ownerId` and `visits[]` on a pet — are not sent back on a `PUT`. A model whose collection
+property would serialise as `"visits": []` needs the guard that stops it: §11 records a `PUT` carrying
+a read-only field as a `500` on save, and `AC-F03-04` and `AC-F02-10` assert on the very history such
+a body would erase.
 Sentences are in domain language: `the owner details are opened`, not `GET owners by id`.
 
 ### S13 — Feature skeletons
