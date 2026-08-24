@@ -231,11 +231,17 @@ export function whenWithoutThen(feature) {
   let scenario = null;
   let openWhen = null;
   let answered = true;
+  let requests = 0;
   let keyword = null;
 
   const closeScenario = () => {
-    if (!answered && openWhen !== null) {
+    if (openWhen === null) return;
+    if (!answered) {
       problems.push(`${scenario}: "${openWhen.text}" (line ${openWhen.line}) has no Then after it`);
+    } else if (requests > 1) {
+      problems.push(
+        `${scenario}: "${openWhen.text}" (line ${openWhen.line}) is ${requests} requests before one Then`
+      );
     }
   };
 
@@ -249,6 +255,7 @@ export function whenWithoutThen(feature) {
         scenario = scenarioTitle[1].trim();
         openWhen = null;
         answered = true;
+        requests = 0;
         keyword = null;
         return;
       }
@@ -259,10 +266,17 @@ export function whenWithoutThen(feature) {
       const [, word, text] = step;
       if (word !== 'And' && word !== 'But') keyword = word;
 
-      if (keyword === 'When' && (word === 'When')) {
+      if (word === 'When') {
         closeScenario();
         openWhen = { text, line: index + 1 };
         answered = false;
+        requests = 1;
+      } else if (keyword === 'When' && openWhen !== null) {
+        // An `And` continuing a `When` block is a SECOND request in one AC step. The rule's own
+        // message promised "exactly one request" while the walk only looked for a following `Then`,
+        // so two requests answered by one assertion passed. Either enforce the promise or stop
+        // making it; this enforces it.
+        requests += 1;
       } else if (keyword === 'Then' && openWhen !== null) {
         answered = true;
       }
@@ -273,46 +287,97 @@ export function whenWithoutThen(feature) {
 }
 
 /*
- * Whether this project asserts with FluentAssertions at all -- the premise `handAssertedStatusCodes`
- * rests on.
+ * Service calls in a step definition that nobody checked the response code of -- the POSITIVE form of
+ * a rule that used to be written backwards.
  *
- * Without this, that rule is a SILENT PASS on any project that asserts another way. Demonstrated: a
- * step file containing `Assert.That(response.StatusCode, Is.EqualTo(NotFound))` -- the exact defect
- * the rule exists to catch -- produced zero hits, and the gate printed
- * `ok  ...: response codes are left to EnsureStatus`. A green line asserting something false is worse
- * than no line, because nobody investigates green.
+ * The first version forbade a spelling: `StatusCode.Should(` must not appear. Two things were wrong
+ * with that, both measured. It caught ONE of five equivalent ways to write the same assertion -- a
+ * local variable, `Assert.That`, an int cast and a lambda all walked past it. And on a project that
+ * asserts another way it could never match at all, so every file collected a green line saying the
+ * codes had been checked when nothing had looked.
  *
- * The rule is bound to C# plus FluentAssertions and is NOT parameterisable into something portable:
- * its pattern is not a value like a host or a port, it is the rule itself. On another stack it is to
- * be deleted and rewritten, not configured. This function is what makes that visible instead of
- * letting the gate lie.
+ * Asking the opposite question fixes both. "Every service call ends in a check" cannot be satisfied by
+ * rewording an assertion, because it is not about the assertion; and when no service call is found at
+ * all the answer is "nothing to check here", which is honest, rather than a pass nobody earned.
+ *
+ * Reads a whole method body rather than a line, because C# lets the call and the check be separate
+ * statements: `var r = await _owners.Get(id); _check.Expect(r, OK);` is correct and a line-wise rule
+ * would reject it.
  */
-export function usesFluentAssertions(sources) {
-  return (sources ?? []).some((source) => /\.\s*Should\s*\(/.test(source.text ?? ''));
+const AWAIT_SERVICE_CALL = /await\s+_[a-z]\w*\.[A-Z]\w*\(/;
+
+// The same pattern with /g, for counting. Kept separate because a global regex carries lastIndex
+// between calls, so the one used with .test() must not have the flag.
+const AWAIT_SERVICE_CALL_ALL = new RegExp(AWAIT_SERVICE_CALL.source, 'g');
+
+export function uncheckedServiceCalls(sources, { checkedBy } = {}) {
+  const terminators = checkedBy ?? ['Expect', 'EnsureStatus'];
+  const problems = [];
+
+  for (const source of sources ?? []) {
+    const text = withoutLineComments(source.text ?? '');
+    for (const body of methodBodies(text)) {
+      const calls = [...body.text.matchAll(AWAIT_SERVICE_CALL_ALL)];
+      if (calls.length === 0) continue;
+      if (terminators.some((name) => body.text.includes(`${name}(`))) continue;
+      problems.push({
+        path: source.path,
+        line: body.line,
+        method: body.name,
+        calls: calls.length,
+      });
+    }
+  }
+
+  return problems;
+}
+
+/** Whether any step source calls a service at all — the premise this rule rests on. */
+export function callsAnyService(sources) {
+  return (sources ?? []).some((source) =>
+    AWAIT_SERVICE_CALL.test(withoutLineComments(source.text ?? ''))
+  );
+}
+
+/** `//` comment bodies blanked, so a rule quoted in prose is not read as code. Line count is kept. */
+function withoutLineComments(text) {
+  return text
+    .split('\n')
+    .map((line) => line.replace(/\s*\/\/.*$/, ''))
+    .join('\n');
 }
 
 /*
- * Response codes asserted by hand in a step definition -- rubric items 6 and 18.
+ * Every `public`/`private` method body in a C# source, by brace depth.
  *
- * `EnsureStatus` inside the request step has already enforced the code before the response reaches
- * state, so a `Then` that asserts it again writes an assertion that CANNOT FAIL. Measured on
- * AC-F01-03: `response.StatusCode.Should().Be(HttpStatusCode.NotFound, ...)` sat after a `When` whose
- * `EnsureStatus(NotFound)` had already guaranteed it, and the judge charged $2.39 to point it out.
- *
- * Stated as an ABSOLUTE rather than scoped to `[Then]` methods, and that was measured too: the
- * accepted stage-0 scaffold plus all four F-01 scenarios contain the string zero times, because every
- * code in this design goes through `EnsureStatus`. Scoping it would need a C# body parser to buy
- * nothing. If a project ever needs a hand-written code assertion, this is the rule to revisit -- not
- * the one to work around.
+ * Depth counting rather than a regex because a method body contains braces of its own -- object
+ * initialisers, lambdas, nested blocks -- and the rule above has to see the WHOLE body to know
+ * whether the check is in it.
  */
-export function handAssertedStatusCodes(sources) {
-  return (sources ?? []).flatMap((source) =>
-    scan(source.text ?? '', /StatusCode\s*.\s*Should\s*\(/g).map((hit) => ({
-      path: source.path,
-      line: hit.line,
-      match: hit.match,
-    }))
-  );
+function methodBodies(text) {
+  const lines = text.split('\n');
+  const bodies = [];
+  const signature = /^\s*(?:public|private|internal|protected)\s.*\s([A-Za-z_]\w*)\s*\([^;]*\)\s*$/;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const m = signature.exec(lines[i]);
+    if (m === null) continue;
+
+    let depth = 0;
+    let started = false;
+    const collected = [];
+    for (let j = i; j < lines.length; j += 1) {
+      for (const ch of lines[j]) {
+        if (ch === '{') { depth += 1; started = true; }
+        else if (ch === '}') depth -= 1;
+      }
+      collected.push(lines[j]);
+      if (started && depth === 0) break;
+    }
+    if (started) bodies.push({ name: m[1], line: i + 1, text: collected.join('\n') });
+  }
+
+  return bodies;
 }
 
 /** `Scenario Outline` / `Examples` in a feature file. */

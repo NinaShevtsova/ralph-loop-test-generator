@@ -8,8 +8,8 @@ import {
   literalIdsInData,
   forbiddenApis,
   whenWithoutThen,
-  handAssertedStatusCodes,
-  usesFluentAssertions,
+  uncheckedServiceCalls,
+  callsAnyService,
   scenarioOutlines,
   foreignLanguageHeader,
   scenarioTags,
@@ -488,19 +488,28 @@ test('whenWithoutThen reports a trailing When at the end of a scenario', () => {
   assert.equal(whenWithoutThen(feature).length, 1);
 });
 
-test('whenWithoutThen treats And after When as part of the same request block', () => {
+test('whenWithoutThen tells a continued When apart from a second one', () => {
   // `And` continues whichever primary keyword opened the block, which is why this is a walk and not a
-  // regex. Reading the And as its own When would report the accepted AC-F01-04 scenario.
-  const feature = [
-    'Scenario: AC-F01-04 deregistering an owner removes their pet',
-    '    Given a pet type is added to the directory',
-    '    And an owner is registered',
-    '    When the owner is deleted',
-    '    And the owners directory is requested',
-    '    Then the owner is missing from the owners list',
-    '    And the pet is gone too',
-  ].join('\n');
-  assert.deepEqual(whenWithoutThen(feature), []);
+  // regex. Both shapes below are wrong, and they are wrong DIFFERENTLY: two requests answered by one
+  // Then is a request too many, while a When running into another When has nothing asserted at all.
+  // Reading the And as its own When would report the second message for the first case and send the
+  // reader looking for a missing Then that is right there.
+  //
+  // An earlier comment here claimed the accepted AC-F01-04 scenario would be misreported. That was
+  // never measured and is false -- no feature file in this repository has an `And` after a `When`.
+  const continued = whenWithoutThen('Scenario: a\n    When the owner is deleted\n    And the owners directory is requested\n    Then the owner is missing');
+  assert.equal(continued.length, 1);
+  assert.match(continued[0], /2 requests before one Then/);
+
+  const second = whenWithoutThen('Scenario: b\n    When one thing happens\n    When another happens\n    Then it is checked');
+  assert.equal(second.length, 1);
+  assert.match(second[0], /has no Then after it/);
+
+  // And the shape that is CORRECT: And inside a Given chain opens nothing.
+  assert.deepEqual(
+    whenWithoutThen('Scenario: c\n    Given a type exists\n    And an owner is registered\n    When the owner is deleted\n    Then it is gone'),
+    []
+  );
 });
 
 test('whenWithoutThen does not carry state across scenarios', () => {
@@ -518,60 +527,85 @@ test('whenWithoutThen does not carry state across scenarios', () => {
   assert.match(problems[0], /^first:/);
 });
 
-// ── Rubric items 6 and 18, as a check ────────────────────────────────────
+// ── Rubric items 6 and 18, as a POSITIVE check ──────────────────────────────────
 
-test('handAssertedStatusCodes is silent on steps that leave the code to EnsureStatus', () => {
-  const source = { path: 'OwnerSteps.cs', text: 'var r = (await _owners.Create(o)).EnsureStatus(HttpStatusCode.Created);' };
-  assert.deepEqual(handAssertedStatusCodes([source]), []);
+test('uncheckedServiceCalls is silent on the accepted step definitions', () => {
+  const source = {
+    path: 'OwnerSteps.cs',
+    text: [
+      'public async Task AnOwnerIsRegistered()',
+      '{',
+      '    var response = _check.Expect(await _owners.Create(owner), HttpStatusCode.Created);',
+      '}',
+    ].join('\n'),
+  };
+  assert.deepEqual(uncheckedServiceCalls([source]), []);
 });
 
-test('handAssertedStatusCodes reports an assertion the When already guaranteed', () => {
-  // Measured on AC-F01-03: the When called EnsureStatus(NotFound) before the response reached state,
-  // so this line could never fail. Dead assertion weight, and an iteration to remove it.
-  const source = { path: 'OwnerAssertionSteps.cs', text: 'r.StatusCode.Should().Be(HttpStatusCode.NotFound, "because ...");' };
-  const hits = handAssertedStatusCodes([source]);
+test('uncheckedServiceCalls accepts the call and the check as separate statements', () => {
+  // C# allows it and it is correct, so a line-wise rule would reject working code. This is why the
+  // rule reads a whole method body.
+  const source = {
+    path: 'OwnerSteps.cs',
+    text: [
+      'public async Task AnOwnerIsRegistered()',
+      '{',
+      '    var r = await _owners.Create(owner);',
+      '    _check.Expect(r, HttpStatusCode.Created);',
+      '}',
+    ].join('\n'),
+  };
+  assert.deepEqual(uncheckedServiceCalls([source]), []);
+});
+
+test('uncheckedServiceCalls reports a service call whose code nobody checked', () => {
+  const source = {
+    path: 'X.cs',
+    text: 'public async Task DoIt()\n{\n    var r = await _owners.Create(o);\n    _state.Set("k", r);\n}',
+  };
+  const hits = uncheckedServiceCalls([source]);
   assert.equal(hits.length, 1);
-  assert.equal(hits[0].path, 'OwnerAssertionSteps.cs');
-  assert.equal(hits[0].line, 1);
+  assert.equal(hits[0].method, 'DoIt');
 });
 
-test('handAssertedStatusCodes tolerates the whitespace C# allows', () => {
-  const spellings = [
-    'r.StatusCode .Should() .Be(x);',
-    'r.StatusCode	.Should	();',
-  ];
-  for (const text of spellings) {
-    assert.equal(handAssertedStatusCodes([{ path: 'A.cs', text }]).length, 1, text);
-  }
+test('uncheckedServiceCalls catches a REWORDED assertion, which the negative rule could not', () => {
+  // The whole reason the rule was turned around. The version that forbade `StatusCode.Should(`
+  // matched one spelling out of five; a local variable, `Assert.That`, an int cast and a lambda all
+  // walked past it. Asking "was the call checked" instead of "was it asserted this way" cannot be
+  // dodged by rewording, because it is not about the assertion.
+  const source = {
+    path: 'W.cs',
+    text: 'public async Task D()\n{\n    var r = await _owners.Delete(1);\n    Assert.That(r.StatusCode, Is.EqualTo(404));\n}',
+  };
+  assert.equal(uncheckedServiceCalls([source]).length, 1);
 });
 
-test('handAssertedStatusCodes reports every hit and an empty list for no sources', () => {
-  const hits = handAssertedStatusCodes([
-    { path: 'A.cs', text: 'x.StatusCode.Should().Be(1);\ny.StatusCode.Should().Be(2);' },
-  ]);
-  assert.equal(hits.length, 2);
-  assert.deepEqual(hits.map((h) => h.line), [1, 2]);
-  assert.deepEqual(handAssertedStatusCodes([]), []);
-  assert.deepEqual(handAssertedStatusCodes(), []);
+test('uncheckedServiceCalls ignores a service call quoted inside a comment', () => {
+  const source = { path: 'C.cs', text: 'public void D()\n{\n    // await _owners.Create(o) would need a check\n}' };
+  assert.deepEqual(uncheckedServiceCalls([source]), []);
 });
 
-test('usesFluentAssertions is true for this project, whose 70 assertions all use Should()', () => {
-  assert.equal(usesFluentAssertions([{ path: 'a.cs', text: 'body.Name.Should().Be(x);' }]), true);
+test('callsAnyService reports false for a project whose steps call their API another way', () => {
+  // The premise guard. False here means the gate prints NOT RUN instead of a pass it never earned.
+  assert.equal(callsAnyService([{ path: 'z.py', text: 'assert r.status_code == 404' }]), false);
+  assert.equal(callsAnyService([]), false);
+  assert.equal(callsAnyService(), false);
 });
 
-test('usesFluentAssertions is false for a project that asserts another way', () => {
-  // The case that makes the guard necessary. This text HAND-ASSERTS a status code -- the exact defect
-  // handAssertedStatusCodes exists to catch -- and that rule returns zero hits on it, because the
-  // spelling is NUnit and the rule only knows FluentAssertions. Without the guard the gate printed
-  // `ok  ...: response codes are left to EnsureStatus` over this very line.
-  const nunit = [{ path: 'Steps.cs', text: 'Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));' }];
-  assert.equal(usesFluentAssertions(nunit), false);
-  assert.deepEqual(handAssertedStatusCodes(nunit), [], 'the rule is blind here, which is the point');
+test('callsAnyService gives the same answer twice, because the pattern carries no lastIndex', () => {
+  // A global regex used with .test() keeps its lastIndex between calls, so every second question
+  // answers false. Measured on the first draft of this rule.
+  const sources = [{ path: 'a.cs', text: 'var r = await _owners.Create(o);' }];
+  assert.equal(callsAnyService(sources), true);
+  assert.equal(callsAnyService(sources), true);
 });
 
-test('usesFluentAssertions is false for an empty or missing source list', () => {
-  // Leans towards "not applicable" rather than "checked and clean": a project with no step files at
-  // all has not been shown to satisfy anything.
-  assert.equal(usesFluentAssertions([]), false);
-  assert.equal(usesFluentAssertions(), false);
+test('whenWithoutThen reports two requests answered by one Then', () => {
+  // The rule's message promises "exactly one request" per AC step. It used to check only that SOME
+  // Then followed, so `When ... And ...` -- two requests -- passed while the message claimed
+  // otherwise. A rule must not promise more than it enforces.
+  const feature = 'Scenario: x\n    When the owner is deleted\n    And the owner is deleted again\n    Then something';
+  const problems = whenWithoutThen(feature);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /2 requests before one Then/);
 });

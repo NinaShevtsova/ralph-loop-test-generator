@@ -35,8 +35,8 @@ import {
   literalIdsInData,
   forbiddenApis,
   whenWithoutThen,
-  handAssertedStatusCodes,
-  usesFluentAssertions,
+  uncheckedServiceCalls,
+  callsAnyService,
   scenarioOutlines,
   foreignLanguageHeader,
   scenarioTags,
@@ -350,19 +350,15 @@ if (!existsSync(dataPath)) {
 const stepFiles = filesUnder(join(PROJECT, 'StepDefinitions'), '.cs');
 
 /*
- * Whether the hand-asserted-status-code rule applies here at all.
+ * Whether the service-call rule applies here at all.
  *
- * That rule matches one spelling — `StatusCode.Should(` — which is C# plus FluentAssertions. On a
- * project that asserts another way it can never match, and every file would collect a green line
- * saying the codes were left to `EnsureStatus`. Demonstrated before this guard existed: a file holding
- * `Assert.That(response.StatusCode, Is.EqualTo(NotFound))` — the exact defect — passed clean.
- *
- * So the premise is tested rather than assumed, and when it does not hold the gate SAYS SO instead of
- * printing a pass it did not earn. Same shape as the `ran === 0` guard in check-invariants.mjs.
+ * The rule reads C# calling a service field — `await _owners.Create(...)`. A project whose steps call
+ * their API another way has no such call, and every file would collect a green line for a check that
+ * never looked. So the premise is tested rather than assumed, and when it does not hold the gate SAYS
+ * SO. Same shape as the `ran === 0` guard in check-invariants.mjs.
  */
-const fluent = usesFluentAssertions(
-  stepFiles.map((file) => ({ path: rel(file), text: readFileSync(file, 'utf8') }))
-);
+const stepSources = stepFiles.map((file) => ({ path: rel(file), text: readFileSync(file, 'utf8') }));
+const anyServiceCalls = callsAnyService(stepSources);
 v.check(
   stepFiles.length > 0,
   `step definitions: ${stepFiles.length} file(s) found`,
@@ -388,18 +384,19 @@ for (const file of stepFiles) {
       'a wait makes a flaky test pass, and Ignore/Assert.Pass switches the test off'
   );
 
-  // Rubric items 6 and 18, moved out of the judge for the same reason as the When/Then check above.
-  // Skipped, loudly, when the premise above does not hold.
-  const byHand = fluent ? handAssertedStatusCodes([{ path: rel(file), text: source }]) : [];
+  // Rubric items 6 and 18, as a POSITIVE rule: every service call ends in a check. Stated this way
+  // round it cannot be satisfied by rewording an assertion, and when no service call is found the
+  // answer is "nothing to check here" rather than a pass nobody earned.
+  const unchecked = anyServiceCalls ? uncheckedServiceCalls([{ path: rel(file), text: source }]) : [];
   v.check(
-    byHand.length === 0,
-    fluent
-      ? `${rel(file)}: response codes are left to EnsureStatus`
-      : `${rel(file)}: hand-asserted status codes NOT CHECKED — no FluentAssertions in StepDefinitions/, ` +
-        'so this rule cannot see how this project asserts. Rubric item 6 still covers it',
-    `${rel(file)}: ${byHand.map((h) => `line ${h.line}`).join(', ')} assert a status code by hand — ` +
-      'the request step already called EnsureStatus before the response reached state, so this ' +
-      'assertion cannot fail. Measured on AC-F01-03, where it cost an iteration'
+    unchecked.length === 0,
+    anyServiceCalls
+      ? `${rel(file)}: every service call ends in Expect or EnsureStatus`
+      : `${rel(file)}: service-call checks NOT RUN — no \`await _service.Method(\` in StepDefinitions/, ` +
+        'so this rule cannot see how this project calls its API. Rubric item 6 still covers it',
+    `${rel(file)}: ${unchecked.map((h) => `${h.method}() at line ${h.line}`).join(', ')} — the response ` +
+      'code is never checked. Route it through StatusCheck.Expect so a broken precondition reports as ' +
+      'an error and an unmet criterion as a failure'
   );
 }
 
