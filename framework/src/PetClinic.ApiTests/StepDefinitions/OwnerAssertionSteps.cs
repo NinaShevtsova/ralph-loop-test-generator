@@ -1,3 +1,4 @@
+using System.Net;
 using FluentAssertions;
 using PetClinic.ApiTests.Http;
 using PetClinic.ApiTests.Models;
@@ -144,5 +145,69 @@ public sealed class OwnerAssertionSteps
 
         directory.Should().NotContain(o => o.City == registered.City && o.Telephone == registered.Telephone,
             $"the owners list must not still carry owner {ownerId}'s previous city/telephone combination after the update");
+    }
+
+    // AC-F01-03 step 1: EnsureStatus inside the When step already covers "code 204"; this is the AC's
+    // other half -- "the response body is empty" -- the same §7 rule AC-F01-02's PUT check already
+    // established, now for the DELETE response instead of the PUT response.
+    [Then("the owner deregistration returns no owner data")]
+    public void TheOwnerDeregistrationReturnsNoOwnerData()
+    {
+        var registered = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
+            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+        var response = _state.Get<ApiResponse<object?>>("OwnerDeleteResponse");
+        var ownerId = registered.Id;
+
+        response.RawContent.Should().BeNullOrEmpty($"owner {ownerId}'s deregistration must answer with an empty body (§7)");
+    }
+
+    // AC-F01-03 step 2: the code (404) is asserted by EnsureStatus inside "an attempt is made to open
+    // the owner details"; this checks the other half §7 states for every 404 -- no body to carry.
+    [Then("the owner details are no longer available")]
+    public void TheOwnerDetailsAreNoLongerAvailable()
+    {
+        var registered = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
+            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+        var response = _state.Get<ApiResponse<Owner>>("OwnerGetByIdAfterDeleteResponse");
+        var ownerId = registered.Id;
+
+        response.RawContent.Should().BeNullOrEmpty($"owner {ownerId}'s details must return no body once deregistered (§7)");
+    }
+
+    // AC-F01-03 step 3: the negative half of §10.4's "exactly one" rule -- this owner's id must be
+    // absent -- paired with a check that deregistering one owner did not clear the rest of the
+    // seeded/created owners, per the AC's own wording ("other owners are present in the list").
+    [Then("the owner is missing from the owners list while other owners remain")]
+    public void TheOwnerIsMissingFromTheOwnersListWhileOtherOwnersRemain()
+    {
+        var registered = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
+            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+        var ownerId = registered.Id ?? throw new InvalidOperationException("Registered owner carries no id.");
+        var directory = _state.Get<ApiResponse<List<Owner>>>("OwnerDirectoryResponse").Body
+            ?? throw new InvalidOperationException("GET /owners answered 200 with no body.");
+
+        directory.Should().NotContain(o => o.Id == ownerId,
+            $"owner {ownerId} must no longer appear in the owners list after deregistration");
+        directory.Should().NotBeEmpty(
+            $"deregistering owner {ownerId} must not clear the rest of the owners list");
+    }
+
+    // AC-F01-03 step 4: EnsureStatus(404) inside "the owner is deleted again" already fails the
+    // scenario if the repeated deregistration answers anything else; this re-asserts the same code
+    // explicitly, plus the "no body" half §7 states for every 404, so the AC's own wording -- "the
+    // system reports that no such owner exists" -- has a Then of its own rather than relying only on
+    // the request step's internal check.
+    [Then("the repeated deregistration reports that the owner no longer exists")]
+    public void TheRepeatedDeregistrationReportsThatTheOwnerNoLongerExists()
+    {
+        var registered = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
+            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+        var response = _state.Get<ApiResponse<object?>>("OwnerDeleteAgainResponse");
+        var ownerId = registered.Id;
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound,
+            $"deregistering owner {ownerId} a second time must report that the owner no longer exists");
+        response.RawContent.Should().BeNullOrEmpty(
+            $"a 404 for owner {ownerId}'s repeated deregistration must carry no body (§7)");
     }
 }

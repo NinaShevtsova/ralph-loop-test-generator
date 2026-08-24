@@ -24,3 +24,15 @@ Feature: F-01 Pet owner: registration, data change, deregistration
     Then the owner details show the updated contacts and the previous values that were not changed
     When the owners directory is requested
     Then the owner appears exactly once in the owners list with the updated contacts and without the previous ones
+
+  @AC-F01-03 @US-01 @US-03 @US-04
+  Scenario: AC-F01-03 a deregistered owner is gone from the owner details and the owners list, and deregistering again gives 404
+    Given an owner is registered
+    When the owner is deleted
+    Then the owner deregistration returns no owner data
+    When an attempt is made to open the owner details
+    Then the owner details are no longer available
+    When the owners directory is requested
+    Then the owner is missing from the owners list while other owners remain
+    When the owner is deleted again
+    Then the repeated deregistration reports that the owner no longer exists

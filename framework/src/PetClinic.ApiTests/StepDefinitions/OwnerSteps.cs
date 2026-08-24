@@ -128,6 +128,29 @@ public sealed class OwnerSteps
         _state.Set("OwnerDeleteResponse", response);
     }
 
+    // AC-F01-03 step 2: a GET on an owner that "the owner is deleted" already removed. Distinct from
+    // "the owner details are opened" because the expected code is the opposite one (404, not 200) --
+    // reusing that step's method would either throw on its own EnsureStatus(OK) or weaken it to accept
+    // both codes, which is exactly the reuse-by-reword the gate exists to catch.
+    [When("an attempt is made to open the owner details")]
+    public async Task AnAttemptIsMadeToOpenTheOwnerDetails()
+    {
+        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id to open.");
+        var response = (await _owners.GetById(ownerId)).EnsureStatus(HttpStatusCode.NotFound);
+        _state.Set("OwnerGetByIdAfterDeleteResponse", response);
+    }
+
+    // AC-F01-03 step 4: the same DELETE as "the owner is deleted", now expected to answer 404 because
+    // the owner no longer exists. A second binding on the same method would force one of the two
+    // EnsureStatus codes to be wrong, so this is its own step rather than a second attribute.
+    [When("the owner is deleted again")]
+    public async Task TheOwnerIsDeletedAgain()
+    {
+        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id to delete.");
+        var response = (await _owners.Delete(ownerId)).EnsureStatus(HttpStatusCode.NotFound);
+        _state.Set("OwnerDeleteAgainResponse", response);
+    }
+
     // §7: a pet is created ONLY through this nested route. Its type is resolved by id alone (§11), so
     // it is read back from whichever PetType a PetTypeSteps step already stored — never a literal.
     [Given("a pet is added to the owner")]

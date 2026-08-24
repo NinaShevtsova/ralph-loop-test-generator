@@ -20,5 +20,14 @@
       "city": "Odesa",
       "telephone": "0997654321"
     }
+  },
+  "AC-F01-03": {
+    "owner": {
+      "firstName": "Ihor",
+      "lastName": "Savchenko",
+      "address": "8 Soborna Street",
+      "city": "Ternopil",
+      "telephone": "0631234567"
+    }
   }
 }
