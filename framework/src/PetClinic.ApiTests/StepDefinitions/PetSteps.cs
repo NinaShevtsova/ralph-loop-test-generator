@@ -44,7 +44,11 @@ public sealed class PetSteps
     }
 
     // §7's first pet-update route. Type is carried over from the pet's current state, never
-    // re-resolved — this route changes the pet's own fields, not what type it is.
+    // re-resolved — this route changes the pet's own fields, not what type it is. `Visits` is left
+    // unset on `updated` for the call itself (Pet.Visits is nullable and omitted-when-null, so the
+    // wire body carries no `visits` field at all, per AC-F02-05); it is folded back in only after the
+    // call succeeds, from `existing`, so CreatedPet keeps reporting the real visit history instead of
+    // inventing an empty one the PUT never actually sent.
     [When("the pet details are updated")]
     public async Task ThePetDetailsAreUpdated()
     {
@@ -63,6 +67,7 @@ public sealed class PetSteps
 
         updated.Id = petId;
         updated.OwnerId = existing.OwnerId;
+        updated.Visits = existing.Visits;
         _state.CreatedPet = updated;
         _state.Set("PetUpdateResponse", response);
     }

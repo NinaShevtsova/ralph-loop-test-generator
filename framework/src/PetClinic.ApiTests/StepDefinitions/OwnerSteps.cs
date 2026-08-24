@@ -149,8 +149,11 @@ public sealed class OwnerSteps
     }
 
     // §7's second pet-update route. The body carries only name/birthDate/type (never id, ownerId or
-    // visits): Type is copied from the pet's current state rather than re-resolved, since this route
-    // does not change what type the pet is.
+    // visits — Pet.Visits is nullable and omitted-when-null, so leaving `updated.Visits` unset keeps
+    // it off the wire): Type is copied from the pet's current state rather than re-resolved, since
+    // this route does not change what type the pet is. `Visits` is folded back in from `existing`
+    // only after the call succeeds, so CreatedPet keeps reporting the real visit history rather than
+    // the empty one the PUT never actually sent.
     [When("the pet is updated through the owner")]
     public async Task ThePetIsUpdatedThroughTheOwner()
     {
@@ -170,6 +173,7 @@ public sealed class OwnerSteps
 
         updated.Id = petId;
         updated.OwnerId = ownerId;
+        updated.Visits = existing.Visits;
         _state.CreatedPet = updated;
         _state.Set("OwnerUpdatePetResponse", response);
     }

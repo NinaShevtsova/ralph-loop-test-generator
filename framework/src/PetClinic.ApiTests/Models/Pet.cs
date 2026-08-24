@@ -21,6 +21,11 @@ public sealed class Pet
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? OwnerId { get; set; }
 
+    // Nullable and omitted-when-null rather than defaulting to `new()`: §7 lists `visits` as a
+    // read-only response field, so a request body must be able to leave it out entirely. A non-null
+    // empty list would still serialise as `"visits": []` on every PUT (AC-F02-05 forbids exactly that
+    // shape), whereas a GET response populates this normally on deserialisation either way.
     [JsonPropertyName("visits")]
-    public List<Visit> Visits { get; set; } = new();
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Visit>? Visits { get; set; }
 }

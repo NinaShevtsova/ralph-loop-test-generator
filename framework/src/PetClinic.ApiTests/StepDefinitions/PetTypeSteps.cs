@@ -42,9 +42,15 @@ public sealed class PetTypeSteps
         _state.Tracker.TrackPetType(created.Id ?? throw new InvalidOperationException("Created pet type carries no id."));
     }
 
-    // Not one of the four creation sentences, so When-only. §10.9: the ACs that do not need their
-    // own type take the first element of this directory, which is why a non-empty result is folded
-    // into CreatedPetType here rather than left for the caller to pick out.
+    // Not one of the four creation sentences, but carries [Given] anyway: §10.9's eighteen ACs that
+    // reuse a directory type (everyone but AC-F01-04 and AC-F02-10) get it only from this step, and
+    // rubric 18 requires every precondition — "an owner is registered with a pet" needs a type before
+    // the pet can be added — to live in a Given/And chain. A Given-keyword step only matches a
+    // binding carrying [Given], so without this the whole arrange block would be unmatched, i.e. red.
+    // §10.9: the ACs that do not need their own type take the first element of this directory, which
+    // is why a non-empty result is folded into CreatedPetType here rather than left for the caller to
+    // pick out.
+    [Given("the pet types directory is requested")]
     [When("the pet types directory is requested")]
     public async Task ThePetTypesDirectoryIsRequested()
     {
