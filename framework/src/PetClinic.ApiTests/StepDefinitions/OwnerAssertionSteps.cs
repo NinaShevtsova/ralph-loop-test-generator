@@ -1,4 +1,3 @@
-using System.Net;
 using FluentAssertions;
 using PetClinic.ApiTests.Http;
 using PetClinic.ApiTests.Models;
@@ -192,11 +191,6 @@ public sealed class OwnerAssertionSteps
             $"deregistering owner {ownerId} must not clear the rest of the owners list");
     }
 
-    // AC-F01-03 step 4: EnsureStatus(404) inside "the owner is deleted again" already fails the
-    // scenario if the repeated deregistration answers anything else; this re-asserts the same code
-    // explicitly, plus the "no body" half §7 states for every 404, so the AC's own wording -- "the
-    // system reports that no such owner exists" -- has a Then of its own rather than relying only on
-    // the request step's internal check.
     [Then("the repeated deregistration reports that the owner no longer exists")]
     public void TheRepeatedDeregistrationReportsThatTheOwnerNoLongerExists()
     {
@@ -205,8 +199,6 @@ public sealed class OwnerAssertionSteps
         var response = _state.Get<ApiResponse<object?>>("OwnerDeleteAgainResponse");
         var ownerId = registered.Id;
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound,
-            $"deregistering owner {ownerId} a second time must report that the owner no longer exists");
         response.RawContent.Should().BeNullOrEmpty(
             $"a 404 for owner {ownerId}'s repeated deregistration must carry no body (§7)");
     }
