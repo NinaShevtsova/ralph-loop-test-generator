@@ -24,8 +24,8 @@
 
 | ID | Group | Title | Status |
 |---|---|---|---|
-| AC-F01-01 | F-01 | a registered owner is visible with the submitted values both in the owner details and in the owners list, and the list has no duplicate | review |
-| AC-F01-02 | F-01 | updated owner contacts are visible in the owner details and the owners list without a duplicate | todo |
+| AC-F01-01 | F-01 | a registered owner is visible with the submitted values both in the owner details and in the owners list, and the list has no duplicate | done |
+| AC-F01-02 | F-01 | updated owner contacts are visible in the owner details and the owners list without a duplicate | review |
 | AC-F01-03 | F-01 | a deregistered owner is gone from the owner details and the owners list, and deregistering again gives 404 | todo |
 | AC-F01-04 | F-01 | deregistering an owner removes their pet and that pet's visits | todo |
 | AC-F02-01 | F-02 | an added pet is visible in the owner details and in its own details with the same data | todo |

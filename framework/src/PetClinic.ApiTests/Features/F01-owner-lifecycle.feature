@@ -14,3 +14,12 @@ Feature: F-01 Pet owner: registration, data change, deregistration
     Then the owner details show the submitted values and match the registration response
     When the owners directory is requested
     Then the owner appears exactly once in the owners list with the submitted values
+
+  @AC-F01-02 @US-01 @US-02
+  Scenario: AC-F01-02 updated owner contacts are visible in the owner details and the owners list without a duplicate
+    Given an owner is registered
+    When the owner's details are updated
+    When the owner details are opened
+    Then the owner details show the updated contacts and the previous values that were not changed
+    When the owners directory is requested
+    Then the owner appears exactly once in the owners list with the updated contacts and without the previous ones

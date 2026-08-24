@@ -7,5 +7,14 @@
       "city": "Lviv",
       "telephone": "0501234567"
     }
+  },
+  "AC-F01-02": {
+    "owner": {
+      "firstName": "Oksana",
+      "lastName": "Bondarenko",
+      "address": "45 Franka Street",
+      "city": "Kyiv",
+      "telephone": "0671234567"
+    }
   }
 }

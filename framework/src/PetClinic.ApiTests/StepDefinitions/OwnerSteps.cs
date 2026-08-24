@@ -96,9 +96,13 @@ public sealed class OwnerSteps
         var response = (await _owners.Update(ownerId, updated)).EnsureStatus(HttpStatusCode.NoContent);
 
         // PUT answers 204 with no body (§7) — the id is not part of the request, so it is folded back
-        // in only now, for the benefit of steps that read CreatedOwner afterwards.
+        // in only now, for the benefit of steps that read CreatedOwner afterwards. Stored a second
+        // time under its own key because a later "the owner details are opened" step overwrites
+        // CreatedOwner with the GET's body — an assertion comparing the fetched owner against what
+        // was actually submitted needs this copy, not the overwritten one.
         updated.Id = ownerId;
         _state.CreatedOwner = updated;
+        _state.Set("OwnerUpdateRequest", updated);
         _state.Set("OwnerUpdateResponse", response);
     }
 

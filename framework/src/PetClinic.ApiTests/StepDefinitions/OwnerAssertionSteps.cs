@@ -81,4 +81,53 @@ public sealed class OwnerAssertionSteps
         listed.City.Should().Be(created.City, $"owner {ownerId}'s entry in the owners list must carry the registered city");
         listed.Telephone.Should().Be(created.Telephone, $"owner {ownerId}'s entry in the owners list must carry the registered telephone");
     }
+
+    // AC-F01-02 step 2: the new city/telephone are compared against OwnerUpdateRequest -- the exact
+    // body OwnerSteps.cs put on the wire, per the same "compare against what was submitted" rule
+    // iteration 2 established for registration -- while firstName/lastName/address are compared
+    // against OwnerCreateResponse, since a contacts-only update must leave them exactly as
+    // registration returned them.
+    [Then("the owner details show the updated contacts and the previous values that were not changed")]
+    public void TheOwnerDetailsShowTheUpdatedContactsAndThePreviousValuesThatWereNotChanged()
+    {
+        var registered = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
+            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+        var submittedUpdate = _state.Get<Owner>("OwnerUpdateRequest");
+        var fetched = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
+        var ownerId = registered.Id;
+
+        fetched.Id.Should().Be(ownerId, $"owner {ownerId} must still be reachable by the same id after the update");
+        fetched.City.Should().Be(submittedUpdate.City, $"owner {ownerId}'s details must show the new city that was submitted");
+        fetched.Telephone.Should().Be(submittedUpdate.Telephone, $"owner {ownerId}'s details must show the new telephone that was submitted");
+        fetched.FirstName.Should().Be(registered.FirstName, $"owner {ownerId}'s first name must be unchanged by a contacts-only update");
+        fetched.LastName.Should().Be(registered.LastName, $"owner {ownerId}'s last name must be unchanged by a contacts-only update");
+        fetched.Address.Should().Be(registered.Address, $"owner {ownerId}'s address must be unchanged by a contacts-only update");
+        fetched.Pets.Should().NotBeNull($"owner {ownerId}'s response must carry a pets field")
+            .And.BeEmpty($"owner {ownerId} has no pets, and changing contacts must not add any");
+    }
+
+    // AC-F01-02 step 3: "exactly one" per §10.4, plus a negative check that the previous city/telephone
+    // combination (from the registration response, before the update) no longer appears in the list --
+    // the AC's own wording ("no entry ... with the previous city and telephone from Given").
+    [Then("the owner appears exactly once in the owners list with the updated contacts and without the previous ones")]
+    public void TheOwnerAppearsExactlyOnceInTheOwnersListWithTheUpdatedContactsAndWithoutThePreviousOnes()
+    {
+        var registered = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
+            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+        var submittedUpdate = _state.Get<Owner>("OwnerUpdateRequest");
+        var ownerId = registered.Id ?? throw new InvalidOperationException("Registered owner carries no id.");
+        var directory = _state.Get<ApiResponse<List<Owner>>>("OwnerDirectoryResponse").Body
+            ?? throw new InvalidOperationException("GET /owners answered 200 with no body.");
+
+        directory.Should().ContainSingle(o => o.Id == ownerId,
+            $"updating owner {ownerId}'s contacts must not create a duplicate entry in the owners list");
+
+        var listed = directory.Single(o => o.Id == ownerId);
+        listed.City.Should().Be(submittedUpdate.City, $"owner {ownerId}'s entry in the owners list must carry the new city");
+        listed.Telephone.Should().Be(submittedUpdate.Telephone, $"owner {ownerId}'s entry in the owners list must carry the new telephone");
+
+        directory.Should().NotContain(o => o.City == registered.City && o.Telephone == registered.Telephone,
+            $"the owners list must not still carry owner {ownerId}'s previous city/telephone combination after the update");
+    }
 }
