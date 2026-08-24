@@ -34,8 +34,8 @@
 | AC-F02-04 | F-02 | a rename through the owner details is visible in the pet details | done |
 | AC-F02-05 | F-02 | editing a pet's data does not wipe the visit history | done |
 | AC-F02-06 | F-02 | deleting one pet does not affect the owner's second pet | done |
-| AC-F02-07 | F-02 | a deleted pet cannot be opened in its own details or from the owner details | review |
-| AC-F02-08 | F-02 | a pet cannot be opened through another owner's details | todo |
+| AC-F02-07 | F-02 | a deleted pet cannot be opened in its own details or from the owner details | done |
+| AC-F02-08 | F-02 | a pet cannot be opened through another owner's details | review |
 | AC-F02-09 | F-02 | a pet cannot be added to a non-existent owner | todo |
 | AC-F02-10 | F-02 | deleting a pet removes the visits but preserves the owner and the pet types directory | todo |
 | AC-F03-01 | F-03 | a visit from the pet details is visible in the pet's history, in the owner details and in the log | todo |

@@ -93,5 +93,25 @@
       "name": "Pet",
       "birthDate": "2019-08-01"
     }
+  },
+  "AC-F02-08": {
+    "owner": {
+      "firstName": "Yaroslav",
+      "lastName": "Moroz",
+      "address": "6 Peremohy Avenue",
+      "city": "Lutsk",
+      "telephone": "0961234568"
+    },
+    "secondOwner": {
+      "firstName": "Kateryna",
+      "lastName": "Kovalenko",
+      "address": "11 Volya Street",
+      "city": "Ternopil",
+      "telephone": "0971234568"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2020-02-20"
+    }
   }
 }

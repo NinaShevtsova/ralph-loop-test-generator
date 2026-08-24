@@ -101,3 +101,14 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     Then the owner details show the submitted values and match the registration response
     When the pets directory is requested
     Then the pet is missing from the pets list
+
+  @AC-F02-08 @US-03
+  Scenario: AC-F02-08 a pet cannot be opened through another owner's details
+    Given an owner is registered
+    And the pet types directory is requested
+    And a pet is added to the owner
+    And a second owner is registered
+    When the pet is opened from the owner details
+    Then the pet opened from the owner details belongs to its own owner
+    When an attempt is made to open the pet from the second owner's details
+    Then the pet is not available from the second owner's details

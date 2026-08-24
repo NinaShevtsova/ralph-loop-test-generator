@@ -22,6 +22,28 @@ internal sealed class OwnerContactsCase
     public string Telephone { get; set; } = string.Empty;
 }
 
+// AC-F02-08's own second owner (data block key "secondOwner"), same shape as OwnerCase. A second
+// instance of the same type would resolve to the same "owner" JSON entry (TestDataProvider keys
+// purely by type name), so a distinct type is needed to give this owner its own data block --
+// following the OwnerContactsCase precedent above, since TestData/Cases is outside the stage-1 fence.
+internal sealed class SecondOwnerCase
+{
+    [JsonPropertyName("firstName")]
+    public string FirstName { get; set; } = string.Empty;
+
+    [JsonPropertyName("lastName")]
+    public string LastName { get; set; } = string.Empty;
+
+    [JsonPropertyName("address")]
+    public string Address { get; set; } = string.Empty;
+
+    [JsonPropertyName("city")]
+    public string City { get; set; } = string.Empty;
+
+    [JsonPropertyName("telephone")]
+    public string Telephone { get; set; } = string.Empty;
+}
+
 // The 8 request steps of §7 that OwnersService exposes (design D-13): the direct owner routes plus
 // the two nested pet routes §7 places on the owner rather than on PetsService. Nothing here derives
 // from an AC — every step issues its request, asserts the one code that route answers with on the
@@ -232,6 +254,44 @@ public sealed class OwnerSteps
 
         var response = _check.Expect(await _owners.GetPet(ownerId, petId), HttpStatusCode.NotFound);
         _state.Set("OwnerGetPetAfterDeleteResponse", response);
+    }
+
+    // AC-F02-08's Given: a second, independent owner, registered without disturbing CreatedOwner --
+    // the first owner, whose pet and whose reading through "the pet is opened from the owner
+    // details" the rest of the scenario still needs. Stored under its own key rather than the
+    // CreatedOwner property for exactly that reason; not tracked by a ScenarioState.CreatedOwner-style
+    // convenience property because no other step in this flow needs a second one.
+    [Given("a second owner is registered")]
+    public async Task ASecondOwnerIsRegistered()
+    {
+        var data = _data.For<SecondOwnerCase>();
+        var owner = new Owner
+        {
+            FirstName = data.FirstName,
+            LastName = UniqueData.LastName(data.LastName),
+            Address = data.Address,
+            City = data.City,
+            Telephone = data.Telephone,
+        };
+
+        var response = _check.Expect(await _owners.Create(owner), HttpStatusCode.Created);
+        var created = response.Body ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+
+        _state.Set("SecondOwner", created);
+        _state.Tracker.TrackOwner(created.Id ?? throw new InvalidOperationException("Created owner carries no id."));
+    }
+
+    // AC-F02-08 step 2: the same nested route as "the pet is opened from the owner details", now
+    // addressed by the second owner's id instead of the first, so it needs its own 404 expectation
+    // rather than reusing that step, which reads _state.CreatedOwner (the first owner) and asserts 200.
+    [When("an attempt is made to open the pet from the second owner's details")]
+    public async Task AnAttemptIsMadeToOpenThePetFromTheSecondOwnersDetails()
+    {
+        var secondOwnerId = _state.Get<Owner>("SecondOwner").Id ?? throw new InvalidOperationException("Second owner has no id.");
+        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id.");
+
+        var response = _check.Expect(await _owners.GetPet(secondOwnerId, petId), HttpStatusCode.NotFound);
+        _state.Set("OwnerGetPetFromSecondOwnerResponse", response);
     }
 
     // §7's second pet-update route. The body carries only name/birthDate/type (never id, ownerId or

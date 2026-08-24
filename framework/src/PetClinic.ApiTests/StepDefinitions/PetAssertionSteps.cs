@@ -290,6 +290,35 @@ public sealed class PetAssertionSteps
         fetched.OwnerId.Should().Be(created.OwnerId, $"pet {petId} must still be linked to the same owner after its sibling was deleted");
     }
 
+    // AC-F02-08 step 1: the pet opened through its own owner's nested route must carry that owner's
+    // id and the pet's own id -- establishing which owner the record belongs to before step 2 checks
+    // that substituting a different owner into the same route no longer resolves it.
+    [Then("the pet opened from the owner details belongs to its own owner")]
+    public void ThePetOpenedFromTheOwnerDetailsBelongsToItsOwnOwner()
+    {
+        var nested = _state.Get<ApiResponse<Pet>>("OwnerGetPetResponse").Body
+            ?? throw new InvalidOperationException("GET /owners/{ownerId}/pets/{petId} answered 200 with no body.");
+        var ownerId = _state.CreatedOwner.Id;
+        var petId = _state.CreatedPet.Id;
+
+        nested.Id.Should().Be(petId, $"opening pet {petId} through its own owner's details must return that same pet");
+        nested.OwnerId.Should().Be(ownerId, $"pet {petId} opened through owner {ownerId}'s details must carry a link back to owner {ownerId}");
+    }
+
+    // AC-F02-08 step 2: the code (404) is asserted by EnsureStatus inside "an attempt is made to open
+    // the pet from the second owner's details"; this checks the other half §7 states for every 404 --
+    // no body to carry. Mirrors "the pet is no longer available from the owner details" (the
+    // deleted-pet case), now for a pet that still exists but is addressed through the wrong owner.
+    [Then("the pet is not available from the second owner's details")]
+    public void ThePetIsNotAvailableFromTheSecondOwnersDetails()
+    {
+        var petId = _state.CreatedPet.Id;
+        var response = _state.Get<ApiResponse<Pet>>("OwnerGetPetFromSecondOwnerResponse");
+
+        response.RawContent.Should().BeNullOrEmpty(
+            $"opening pet {petId} through another owner's details must return no body (§7)");
+    }
+
     // Shared by both AC-F02-05 Then steps above: the visit's id, description and date must still be
     // the ones "a visit is recorded for the pet" created, whether read right after recording it or
     // again after the pet's name was changed by a PUT that never submitted a visits field.
