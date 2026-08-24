@@ -1,0 +1,11 @@
+{
+  "AC-F01-01": {
+    "owner": {
+      "firstName": "Anna",
+      "lastName": "Hrynenko",
+      "address": "12 Sadova Street",
+      "city": "Lviv",
+      "telephone": "0501234567"
+    }
+  }
+}
