@@ -20,8 +20,8 @@
 | S7 | wave-5 | ResourceTracker: drain in the mandatory order, swallow only 404 | done |
 | S8 | wave-5 | ReadinessProbe: poll until ready, never restart anything | done |
 | S9 | wave-6 | ScenarioState: scenario-scoped state for every request step | done |
-| S10 | wave-6 | TestDataProvider and the case POCOs, keyed by the AC tag | review |
-| S11 | wave-6 | BDD wiring: hooks, DI registration, non-parallelisable assembly | todo |
+| S10 | wave-6 | TestDataProvider and the case POCOs, keyed by the AC tag | done |
+| S11 | wave-6 | BDD wiring: hooks, DI registration, non-parallelisable assembly | review |
 | S12 | wave-7 | The 22 request steps, grouped by domain | todo |
 | S13 | wave-8 | Feature file skeletons for F-01, F-02, F-03 | todo |
 | S14 | wave-8 | The three smoke tests, the wiring canary, and their data files | todo |
