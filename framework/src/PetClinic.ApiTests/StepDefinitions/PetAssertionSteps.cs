@@ -149,4 +149,35 @@ public sealed class PetAssertionSteps
 
         nested.Name.Should().Be(expectedName, $"pet {petId} opened through its owner must show the renamed value");
     }
+
+    // AC-F02-04 step 1: EnsureStatus inside "the pet is updated through the owner" already covers
+    // "code 204"; this is the other half §7 states for every PUT -- the same "empty body" check this
+    // file already applies to the direct pet route ("the pet update returns no pet data"), now for
+    // the owner-nested route, which stores its response under its own key (OwnerUpdatePetResponse)
+    // rather than PetUpdateResponse.
+    [Then("the pet update through the owner details returns no pet data")]
+    public void ThePetUpdateThroughTheOwnerDetailsReturnsNoPetData()
+    {
+        var petId = _state.CreatedPet.Id;
+        var response = _state.Get<ApiResponse<object?>>("OwnerUpdatePetResponse");
+
+        response.RawContent.Should().BeNullOrEmpty($"pet {petId}'s update through the owner must answer with an empty body (§7)");
+    }
+
+    // AC-F02-04 step 2: compared against OwnerUpdatePetRequest -- the body "the pet is updated
+    // through the owner" put on the wire -- rather than _state.CreatedPet, since "the pet details
+    // are opened" overwrites CreatedPet with this very GET's own body before this step runs, which
+    // would make a comparison against CreatedPet prove nothing.
+    [Then("the pet details show the name that was set through the owner")]
+    public void ThePetDetailsShowTheNameThatWasSetThroughTheOwner()
+    {
+        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
+        var submitted = _state.Get<Pet>("OwnerUpdatePetRequest");
+        var ownerId = _state.CreatedOwner.Id;
+        var petId = fetched.Id;
+
+        fetched.Name.Should().Be(submitted.Name, $"pet {petId}'s own details must show the name that was set through the owner");
+        fetched.OwnerId.Should().Be(ownerId, $"pet {petId} must still be linked to owner {ownerId} after being renamed through the owner");
+    }
 }

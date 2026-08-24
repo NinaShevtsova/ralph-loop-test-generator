@@ -41,3 +41,15 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     Then the owner details show the pet with its new name
     When the pet is opened from the owner details
     Then the pet opened from the owner details carries the new name
+
+  @AC-F02-04 @US-02
+  Scenario: AC-F02-04 a rename through the owner details is visible in the pet details
+    Given an owner is registered
+    And the pet types directory is requested
+    And a pet is added to the owner
+    When the pet is updated through the owner
+    Then the pet update through the owner details returns no pet data
+    When the pet details are opened
+    Then the pet details show the name that was set through the owner
+    When the owner details are opened
+    Then the owner details show the pet with its new name

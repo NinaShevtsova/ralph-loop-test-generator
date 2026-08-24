@@ -37,5 +37,18 @@
       "name": "Pet",
       "birthDate": "2021-07-09"
     }
+  },
+  "AC-F02-04": {
+    "owner": {
+      "firstName": "Natalia",
+      "lastName": "Symonenko",
+      "address": "17 Soborna Street",
+      "city": "Zhytomyr",
+      "telephone": "0991234567"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2018-11-22"
+    }
   }
 }
