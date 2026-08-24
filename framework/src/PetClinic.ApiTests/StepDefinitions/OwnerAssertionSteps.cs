@@ -2,8 +2,6 @@ using FluentAssertions;
 using PetClinic.ApiTests.Http;
 using PetClinic.ApiTests.Models;
 using PetClinic.ApiTests.Support;
-using PetClinic.ApiTests.TestData;
-using PetClinic.ApiTests.TestData.Cases;
 using Reqnroll;
 
 namespace PetClinic.ApiTests.StepDefinitions;
@@ -15,32 +13,33 @@ namespace PetClinic.ApiTests.StepDefinitions;
 public sealed class OwnerAssertionSteps
 {
     private readonly ScenarioState _state;
-    private readonly TestDataProvider _data;
 
-    public OwnerAssertionSteps(ScenarioState state, TestDataProvider data)
+    public OwnerAssertionSteps(ScenarioState state)
     {
         _state = state;
-        _data = data;
     }
 
-    // AC-F01-01 step 1: compared against the base OwnerCase, not _state.CreatedOwner -- that field
-    // is set to this very response body, so comparing it to itself would prove nothing. lastName
-    // alone is a StartWith: UniqueData.LastName appends a suffix to, not instead of, the base value
-    // (§10.5), so an exact match would fail by construction.
+    // AC-F01-01 step 1: compared against the exact Owner OwnerSteps.cs sent on the wire
+    // (OwnerCreateRequest), not against the base OwnerCase and not against _state.CreatedOwner --
+    // the latter is set to this very response body, so comparing it to itself would prove nothing.
+    // Comparing against the request (which already carries UniqueData's suffix) lets every field,
+    // lastName included, be an exact Be rather than a StartWith.
     [Then("the created owner has an assigned id, the submitted values and an empty pets list")]
     public void TheCreatedOwnerHasAnAssignedIdTheSubmittedValuesAndAnEmptyPetsList()
     {
         var owner = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
             ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
-        var expected = _data.For<OwnerCase>();
+        var submitted = _state.Get<Owner>("OwnerCreateRequest");
+        var ownerId = owner.Id;
 
-        owner.Id.Should().NotBeNull("a created owner must carry the id the API assigned it");
-        owner.FirstName.Should().Be(expected.FirstName);
-        owner.LastName.Should().StartWith(expected.LastName, "the unique suffix is appended to the base last name, not a replacement for it");
-        owner.Address.Should().Be(expected.Address);
-        owner.City.Should().Be(expected.City);
-        owner.Telephone.Should().Be(expected.Telephone);
-        owner.Pets.Should().NotBeNull().And.BeEmpty("a newly registered owner has no pets yet");
+        owner.Id.Should().NotBeNull("registering an owner must return the id the API assigned it");
+        owner.FirstName.Should().Be(submitted.FirstName, $"owner {ownerId} must keep the first name that was submitted");
+        owner.LastName.Should().Be(submitted.LastName, $"owner {ownerId} must keep the exact last name that was submitted, unique suffix included");
+        owner.Address.Should().Be(submitted.Address, $"owner {ownerId} must keep the address that was submitted");
+        owner.City.Should().Be(submitted.City, $"owner {ownerId} must keep the city that was submitted");
+        owner.Telephone.Should().Be(submitted.Telephone, $"owner {ownerId} must keep the telephone that was submitted");
+        owner.Pets.Should().NotBeNull($"owner {ownerId}'s response must carry a pets field")
+            .And.BeEmpty($"owner {ownerId} has just been registered and has no pets yet");
     }
 
     // AC-F01-01 step 2: the GET response is compared against the POST response, not against
@@ -53,13 +52,16 @@ public sealed class OwnerAssertionSteps
             ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
         var fetched = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
             ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
+        var ownerId = created.Id;
 
         fetched.Should().BeEquivalentTo(created,
-            "opening the owner details must return exactly what registration already returned, with no other state saved");
+            $"opening the details of owner {ownerId} must return exactly what registering owner {ownerId} already returned, with no other state saved");
     }
 
     // AC-F01-01 step 3: "exactly one" per §10.4 -- never an absolute count of the whole list, only
-    // that this owner's own id occurs once.
+    // that this owner's own id occurs once. The `because` message is built from `ownerId` (a plain
+    // value) rather than the ContainSingle predicate, since FluentAssertions prints the predicate's
+    // expression text ("o.Id == ownerId") on failure, never the captured value.
     [Then("the owner appears exactly once in the owners list with the submitted values")]
     public void TheOwnerAppearsExactlyOnceInTheOwnersListWithTheSubmittedValues()
     {
@@ -70,13 +72,13 @@ public sealed class OwnerAssertionSteps
             ?? throw new InvalidOperationException("GET /owners answered 200 with no body.");
 
         directory.Should().ContainSingle(o => o.Id == ownerId,
-            "registration must not create a duplicate entry in the owners list");
+            $"registering owner {ownerId} must not create a duplicate entry in the owners list");
 
         var listed = directory.Single(o => o.Id == ownerId);
-        listed.FirstName.Should().Be(created.FirstName);
-        listed.LastName.Should().Be(created.LastName);
-        listed.Address.Should().Be(created.Address);
-        listed.City.Should().Be(created.City);
-        listed.Telephone.Should().Be(created.Telephone);
+        listed.FirstName.Should().Be(created.FirstName, $"owner {ownerId}'s entry in the owners list must carry the registered first name");
+        listed.LastName.Should().Be(created.LastName, $"owner {ownerId}'s entry in the owners list must carry the registered last name");
+        listed.Address.Should().Be(created.Address, $"owner {ownerId}'s entry in the owners list must carry the registered address");
+        listed.City.Should().Be(created.City, $"owner {ownerId}'s entry in the owners list must carry the registered city");
+        listed.Telephone.Should().Be(created.Telephone, $"owner {ownerId}'s entry in the owners list must carry the registered telephone");
     }
 }

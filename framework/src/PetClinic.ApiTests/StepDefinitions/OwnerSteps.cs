@@ -48,6 +48,7 @@ public sealed class OwnerSteps
         var created = response.Body ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
 
         _state.CreatedOwner = created;
+        _state.Set("OwnerCreateRequest", owner);
         _state.Set("OwnerCreateResponse", response);
         _state.Tracker.TrackOwner(created.Id ?? throw new InvalidOperationException("Created owner carries no id."));
     }
