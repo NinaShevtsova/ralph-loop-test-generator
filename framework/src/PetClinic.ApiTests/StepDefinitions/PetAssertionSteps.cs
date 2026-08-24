@@ -319,6 +319,31 @@ public sealed class PetAssertionSteps
             $"opening pet {petId} through another owner's details must return no body (§7)");
     }
 
+    // AC-F02-09 step 1: EnsureStatus inside "an attempt is made to add a pet to the deleted owner"
+    // already covers "code 404"; this is the other half §7 states for every 404 -- no body to carry.
+    [Then("the pet addition to the deleted owner returns no pet data")]
+    public void ThePetAdditionToTheDeletedOwnerReturnsNoPetData()
+    {
+        var response = _state.Get<ApiResponse<Pet>>("OwnerAddPetToDeletedOwnerResponse");
+
+        response.RawContent.Should().BeNullOrEmpty(
+            "adding a pet to a non-existent owner must return no body (§7)");
+    }
+
+    // AC-F02-09 step 2: the failed POST never returned a body to take an id from, so this checks by
+    // the unique name the attempted request carried instead -- the same "compare against what was
+    // submitted" rule this file applies elsewhere, now proving the pet was never created at all.
+    [Then("the pet from the failed addition is missing from the pets list")]
+    public void ThePetFromTheFailedAdditionIsMissingFromThePetsList()
+    {
+        var attempted = _state.Get<Pet>("OwnerAddPetToDeletedOwnerRequest");
+        var directory = _state.Get<ApiResponse<List<Pet>>>("PetDirectoryResponse").Body
+            ?? throw new InvalidOperationException("GET /pets answered 200 with no body.");
+
+        directory.Should().NotContain(p => p.Name == attempted.Name,
+            $"pet '{attempted.Name}' must never have been created since its owner did not exist");
+    }
+
     // Shared by both AC-F02-05 Then steps above: the visit's id, description and date must still be
     // the ones "a visit is recorded for the pet" created, whether read right after recording it or
     // again after the pet's name was changed by a PUT that never submitted a visits field.

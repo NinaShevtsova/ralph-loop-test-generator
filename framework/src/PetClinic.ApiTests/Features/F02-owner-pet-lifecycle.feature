@@ -112,3 +112,14 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     Then the pet opened from the owner details belongs to its own owner
     When an attempt is made to open the pet from the second owner's details
     Then the pet is not available from the second owner's details
+
+  @AC-F02-09 @US-06
+  Scenario: AC-F02-09 a pet cannot be added to a non-existent owner
+    Given an owner is registered
+    And the pet types directory is requested
+    When the owner is deleted
+    Then the owner deregistration returns no owner data
+    When an attempt is made to add a pet to the deleted owner
+    Then the pet addition to the deleted owner returns no pet data
+    When the pets directory is requested
+    Then the pet from the failed addition is missing from the pets list

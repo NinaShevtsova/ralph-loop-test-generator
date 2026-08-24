@@ -294,6 +294,29 @@ public sealed class OwnerSteps
         _state.Set("OwnerGetPetFromSecondOwnerResponse", response);
     }
 
+    // AC-F02-09's own attempt: the same request shape as "a pet is added to the owner" (name,
+    // birthDate, type from the directory), but posted to the id of an owner "the owner is deleted"
+    // already removed -- so the freed CreatedOwner.Id resolves to nobody, the expected code is 404
+    // rather than 201, and there is no created pet to fold into CreatedPet.
+    [When("an attempt is made to add a pet to the deleted owner")]
+    public async Task AnAttemptIsMadeToAddAPetToTheDeletedOwner()
+    {
+        var deletedOwnerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id.");
+        var data = _data.For<PetCase>();
+        var petType = _state.CreatedPetType;
+
+        var pet = new Pet
+        {
+            Name = UniqueData.PetName(data.Name),
+            BirthDate = data.BirthDate,
+            Type = new PetType { Id = petType.Id, Name = petType.Name },
+        };
+
+        var response = _check.Expect(await _owners.AddPet(deletedOwnerId, pet), HttpStatusCode.NotFound);
+        _state.Set("OwnerAddPetToDeletedOwnerRequest", pet);
+        _state.Set("OwnerAddPetToDeletedOwnerResponse", response);
+    }
+
     // §7's second pet-update route. The body carries only name/birthDate/type (never id, ownerId or
     // visits — Pet.Visits is nullable and omitted-when-null, so leaving `updated.Visits` unset keeps
     // it off the wire): Type is copied from the pet's current state rather than re-resolved, since

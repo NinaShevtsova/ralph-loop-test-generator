@@ -113,5 +113,18 @@
       "name": "Pet",
       "birthDate": "2020-02-20"
     }
+  },
+  "AC-F02-09": {
+    "owner": {
+      "firstName": "Vasyl",
+      "lastName": "Panchenko",
+      "address": "23 Myru Street",
+      "city": "Uzhhorod",
+      "telephone": "0951234569"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2015-06-30"
+    }
   }
 }
