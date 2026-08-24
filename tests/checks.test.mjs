@@ -9,6 +9,7 @@ import {
   forbiddenApis,
   whenWithoutThen,
   handAssertedStatusCodes,
+  usesFluentAssertions,
   scenarioOutlines,
   foreignLanguageHeader,
   scenarioTags,
@@ -552,4 +553,25 @@ test('handAssertedStatusCodes reports every hit and an empty list for no sources
   assert.deepEqual(hits.map((h) => h.line), [1, 2]);
   assert.deepEqual(handAssertedStatusCodes([]), []);
   assert.deepEqual(handAssertedStatusCodes(), []);
+});
+
+test('usesFluentAssertions is true for this project, whose 70 assertions all use Should()', () => {
+  assert.equal(usesFluentAssertions([{ path: 'a.cs', text: 'body.Name.Should().Be(x);' }]), true);
+});
+
+test('usesFluentAssertions is false for a project that asserts another way', () => {
+  // The case that makes the guard necessary. This text HAND-ASSERTS a status code -- the exact defect
+  // handAssertedStatusCodes exists to catch -- and that rule returns zero hits on it, because the
+  // spelling is NUnit and the rule only knows FluentAssertions. Without the guard the gate printed
+  // `ok  ...: response codes are left to EnsureStatus` over this very line.
+  const nunit = [{ path: 'Steps.cs', text: 'Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));' }];
+  assert.equal(usesFluentAssertions(nunit), false);
+  assert.deepEqual(handAssertedStatusCodes(nunit), [], 'the rule is blind here, which is the point');
+});
+
+test('usesFluentAssertions is false for an empty or missing source list', () => {
+  // Leans towards "not applicable" rather than "checked and clean": a project with no step files at
+  // all has not been shown to satisfy anything.
+  assert.equal(usesFluentAssertions([]), false);
+  assert.equal(usesFluentAssertions(), false);
 });

@@ -36,6 +36,7 @@ import {
   forbiddenApis,
   whenWithoutThen,
   handAssertedStatusCodes,
+  usesFluentAssertions,
   scenarioOutlines,
   foreignLanguageHeader,
   scenarioTags,
@@ -347,6 +348,21 @@ if (!existsSync(dataPath)) {
 
 // ── 4. Step definitions: no waits, no switches, no literal ids ─────────────────────
 const stepFiles = filesUnder(join(PROJECT, 'StepDefinitions'), '.cs');
+
+/*
+ * Whether the hand-asserted-status-code rule applies here at all.
+ *
+ * That rule matches one spelling — `StatusCode.Should(` — which is C# plus FluentAssertions. On a
+ * project that asserts another way it can never match, and every file would collect a green line
+ * saying the codes were left to `EnsureStatus`. Demonstrated before this guard existed: a file holding
+ * `Assert.That(response.StatusCode, Is.EqualTo(NotFound))` — the exact defect — passed clean.
+ *
+ * So the premise is tested rather than assumed, and when it does not hold the gate SAYS SO instead of
+ * printing a pass it did not earn. Same shape as the `ran === 0` guard in check-invariants.mjs.
+ */
+const fluent = usesFluentAssertions(
+  stepFiles.map((file) => ({ path: rel(file), text: readFileSync(file, 'utf8') }))
+);
 v.check(
   stepFiles.length > 0,
   `step definitions: ${stepFiles.length} file(s) found`,
@@ -373,10 +389,14 @@ for (const file of stepFiles) {
   );
 
   // Rubric items 6 and 18, moved out of the judge for the same reason as the When/Then check above.
-  const byHand = handAssertedStatusCodes([{ path: rel(file), text: source }]);
+  // Skipped, loudly, when the premise above does not hold.
+  const byHand = fluent ? handAssertedStatusCodes([{ path: rel(file), text: source }]) : [];
   v.check(
     byHand.length === 0,
-    `${rel(file)}: response codes are left to EnsureStatus`,
+    fluent
+      ? `${rel(file)}: response codes are left to EnsureStatus`
+      : `${rel(file)}: hand-asserted status codes NOT CHECKED — no FluentAssertions in StepDefinitions/, ` +
+        'so this rule cannot see how this project asserts. Rubric item 6 still covers it',
     `${rel(file)}: ${byHand.map((h) => `line ${h.line}`).join(', ')} assert a status code by hand — ` +
       'the request step already called EnsureStatus before the response reached state, so this ' +
       'assertion cannot fail. Measured on AC-F01-03, where it cost an iteration'

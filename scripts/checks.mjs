@@ -273,6 +273,25 @@ export function whenWithoutThen(feature) {
 }
 
 /*
+ * Whether this project asserts with FluentAssertions at all -- the premise `handAssertedStatusCodes`
+ * rests on.
+ *
+ * Without this, that rule is a SILENT PASS on any project that asserts another way. Demonstrated: a
+ * step file containing `Assert.That(response.StatusCode, Is.EqualTo(NotFound))` -- the exact defect
+ * the rule exists to catch -- produced zero hits, and the gate printed
+ * `ok  ...: response codes are left to EnsureStatus`. A green line asserting something false is worse
+ * than no line, because nobody investigates green.
+ *
+ * The rule is bound to C# plus FluentAssertions and is NOT parameterisable into something portable:
+ * its pattern is not a value like a host or a port, it is the rule itself. On another stack it is to
+ * be deleted and rewritten, not configured. This function is what makes that visible instead of
+ * letting the gate lie.
+ */
+export function usesFluentAssertions(sources) {
+  return (sources ?? []).some((source) => /\.\s*Should\s*\(/.test(source.text ?? ''));
+}
+
+/*
  * Response codes asserted by hand in a step definition -- rubric items 6 and 18.
  *
  * `EnsureStatus` inside the request step has already enforced the code before the response reaches
