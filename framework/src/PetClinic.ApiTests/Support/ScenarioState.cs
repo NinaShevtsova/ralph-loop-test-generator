@@ -1,0 +1,91 @@
+using PetClinic.ApiTests.Models;
+
+namespace PetClinic.ApiTests.Support;
+
+// Scenario-scoped memory, resolved once per scenario through Reqnroll's DI container: the
+// response of every request step, the entities a step created, and this scenario's
+// ResourceTracker all live here.
+//
+// ADDRESSED BY KEY, not by recency: a step stores a value under a name, and any later step in
+// the same scenario reads it back by that name, however many other steps ran in between. F-02
+// and F-03 both chain GET /pettypes -> POST /owners -> POST /owners/{ownerId}/pets: the pet type
+// is fetched first and needed third, with the owner registration in between. A holder exposing
+// only "the last response" -- or one fixed slot per entity that a later step's write can
+// overwrite -- cannot serve that chain, so the store below is a dictionary keyed by name.
+public sealed class ScenarioState
+{
+    private readonly Dictionary<string, object> _values = new();
+
+    public ResourceTracker Tracker { get; }
+
+    public ScenarioState(ResourceTracker tracker)
+    {
+        Tracker = tracker;
+    }
+
+    // Different keys never collide: storing under "PetType" and later under "Owner" leaves
+    // "PetType" exactly as it was, however many steps ran in between.
+    public void Set<T>(string key, T value) where T : notnull
+    {
+        _values[key] = value;
+    }
+
+    public bool TryGet<T>(string key, out T value)
+    {
+        if (_values.TryGetValue(key, out var stored) && stored is T typed)
+        {
+            value = typed;
+            return true;
+        }
+
+        value = default!;
+        return false;
+    }
+
+    // Throws naming the missing key and every key that IS present, so a step reading the wrong
+    // name -- or reading too early -- fails with something more useful than a
+    // NullReferenceException surfacing two steps later.
+    public T Get<T>(string key)
+    {
+        if (TryGet<T>(key, out var value))
+        {
+            return value;
+        }
+
+        var known = _values.Count == 0 ? "(none)" : string.Join(", ", _values.Keys);
+        throw new InvalidOperationException(
+            $"ScenarioState has no {typeof(T).Name} stored under key '{key}'. Keys present: {known}.");
+    }
+
+    // Fixed per-entity convenience ON TOP OF the keyed store above -- not a substitute for it.
+    // Each property is just Get/Set under a well-known key, so a step remains free to also store
+    // the same or another entity under a second, more specific key without conflict.
+    private const string OwnerKey = "Owner";
+    private const string PetKey = "Pet";
+    private const string PetTypeKey = "PetType";
+    private const string VisitKey = "Visit";
+
+    public Owner CreatedOwner
+    {
+        get => Get<Owner>(OwnerKey);
+        set => Set(OwnerKey, value);
+    }
+
+    public Pet CreatedPet
+    {
+        get => Get<Pet>(PetKey);
+        set => Set(PetKey, value);
+    }
+
+    public PetType CreatedPetType
+    {
+        get => Get<PetType>(PetTypeKey);
+        set => Set(PetTypeKey, value);
+    }
+
+    public Visit CreatedVisit
+    {
+        get => Get<Visit>(VisitKey);
+        set => Set(VisitKey, value);
+    }
+}
