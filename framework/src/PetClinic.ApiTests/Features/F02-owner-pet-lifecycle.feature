@@ -117,8 +117,7 @@ Feature: F-02 Owner's pet: adding, changing, deleting
   Scenario: AC-F02-09 a pet cannot be added to a non-existent owner
     Given an owner is registered
     And the pet types directory is requested
-    When the owner is deleted
-    Then the owner deregistration returns no owner data
+    And the owner is deleted
     When an attempt is made to add a pet to the deleted owner
     Then the pet addition to the deleted owner returns no pet data
     When the pets directory is requested

@@ -324,10 +324,12 @@ public sealed class PetAssertionSteps
     [Then("the pet addition to the deleted owner returns no pet data")]
     public void ThePetAdditionToTheDeletedOwnerReturnsNoPetData()
     {
+        var deletedOwnerId = _state.CreatedOwner.Id;
+        var attempted = _state.Get<Pet>("OwnerAddPetToDeletedOwnerRequest");
         var response = _state.Get<ApiResponse<Pet>>("OwnerAddPetToDeletedOwnerResponse");
 
         response.RawContent.Should().BeNullOrEmpty(
-            "adding a pet to a non-existent owner must return no body (§7)");
+            $"adding pet '{attempted.Name}' to deleted owner {deletedOwnerId} must return no body (§7)");
     }
 
     // AC-F02-09 step 2: the failed POST never returned a body to take an id from, so this checks by

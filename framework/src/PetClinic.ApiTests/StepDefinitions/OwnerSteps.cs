@@ -144,6 +144,10 @@ public sealed class OwnerSteps
         _state.Set("OwnerUpdateResponse", response);
     }
 
+    // AC-F02-09's Given: the deletion is part of that AC's precondition (a freed id), rendered as a
+    // Given/And rather than a When/Then pair so a failure here reports as a setup error, not an
+    // assertion failure -- the same reasoning "a pet is added to the owner" already applies below.
+    [Given("the owner is deleted")]
     [When("the owner is deleted")]
     public async Task TheOwnerIsDeleted()
     {
