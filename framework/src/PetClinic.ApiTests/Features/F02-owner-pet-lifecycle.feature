@@ -20,3 +20,12 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     Then the pet details match the addition and the type from the directory
     When the pet is opened from the owner details
     Then the pet opened from the owner details matches the pet details in every field
+
+  @AC-F02-02 @US-04
+  Scenario: AC-F02-02 an added pet appears in the clinic-wide pets list
+    Given an owner is registered
+    And the pet types directory is requested
+    When a pet is added to the owner
+    Then the created pet has an assigned id, the submitted values and a link to the owner
+    When the pets directory is requested
+    Then the pet appears exactly once in the pets list with the submitted values

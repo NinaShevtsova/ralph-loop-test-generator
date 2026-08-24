@@ -11,5 +11,18 @@
       "name": "Pet",
       "birthDate": "2020-05-14"
     }
+  },
+  "AC-F02-02": {
+    "owner": {
+      "firstName": "Oksana",
+      "lastName": "Melnyk",
+      "address": "8 Hrushevskoho Street",
+      "city": "Poltava",
+      "telephone": "0671234567"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2019-03-02"
+    }
   }
 }

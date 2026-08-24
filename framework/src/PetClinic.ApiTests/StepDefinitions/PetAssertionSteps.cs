@@ -100,4 +100,26 @@ public sealed class PetAssertionSteps
         nested.Should().BeEquivalentTo(direct,
             $"opening pet {direct.Id} through its owner must return exactly what opening it directly already returned");
     }
+
+    // AC-F02-02 step 2: "exactly one" per §10.4, compared against OwnerAddPetResponse (the POST's
+    // own body) for the owner link, name and type id -- the same "compare against what was
+    // submitted" rule this file already applies to the owner-nested reading, now for the
+    // clinic-wide pets list.
+    [Then("the pet appears exactly once in the pets list with the submitted values")]
+    public void ThePetAppearsExactlyOnceInThePetsListWithTheSubmittedValues()
+    {
+        var added = _state.Get<ApiResponse<Pet>>("OwnerAddPetResponse").Body
+            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var petId = added.Id ?? throw new InvalidOperationException("Created pet carries no id.");
+        var directory = _state.Get<ApiResponse<List<Pet>>>("PetDirectoryResponse").Body
+            ?? throw new InvalidOperationException("GET /pets answered 200 with no body.");
+
+        directory.Should().ContainSingle(p => p.Id == petId,
+            $"pet {petId} must appear exactly once in the clinic-wide pets list after being added");
+
+        var listed = directory.Single(p => p.Id == petId);
+        listed.OwnerId.Should().Be(added.OwnerId, $"pet {petId}'s entry in the pets list must link back to its owner");
+        listed.Name.Should().Be(added.Name, $"pet {petId}'s entry in the pets list must carry the submitted name");
+        listed.Type.Id.Should().Be(added.Type.Id, $"pet {petId}'s entry in the pets list must carry the submitted type id");
+    }
 }
