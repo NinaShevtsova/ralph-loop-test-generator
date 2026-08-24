@@ -40,6 +40,15 @@ public sealed class ApiClient
     private async Task<ApiResponse<T>> ExecuteAsync<T>(RestRequest request)
     {
         var response = await _client.ExecuteAsync<T>(request);
-        return new ApiResponse<T>(response.StatusCode, response.Data, response.Content, response.Headers);
+
+        // The resolved URL when RestSharp reports one, the template otherwise. Both were already here
+        // and both were thrown away, which is why every failure message named no route.
+        var resource = response.ResponseUri?.ToString() ?? request.Resource;
+        return new ApiResponse<T>(
+            response.StatusCode,
+            response.Data,
+            response.Content,
+            response.Headers,
+            new RequestContext(request.Method, resource));
     }
 }

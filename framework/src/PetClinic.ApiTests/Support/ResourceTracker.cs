@@ -38,29 +38,74 @@ public sealed class ResourceTracker
 
     public void TrackPetType(int petTypeId) => _petTypeIds.Add(petTypeId);
 
+    /*
+     * Every list is drained even when one of them fails, and the failures are reported together.
+     *
+     * The order still matters -- visits before pets before owners before pet types, because the API
+     * refuses to delete a parent that still has children. What changed is what happens when a delete
+     * answers something other than 204 or 404. It used to throw straight out of the first `DeleteAll`,
+     * so the three later lists were never touched AND the first list was never cleared: `ids.Clear()`
+     * sat after the loop. One 500 on a visit left an owner, a pet and a pet type in the database, and
+     * the next scenario saw another scenario's data.
+     *
+     * The comment that used to sit below claimed "Draining clears every list it touches, so calling
+     * Drain() again has nothing left to delete and cannot throw". That held on the happy path only,
+     * which is the one path where it does not matter.
+     */
     public async Task Drain()
     {
-        await DeleteAll(_visitIds, _visits.Delete);
-        await DeleteAll(_petIds, _pets.Delete);
-        await DeleteAll(_ownerIds, _owners.Delete);
-        await DeleteAll(_petTypeIds, _petTypes.Delete);
-    }
+        var failures = new List<Exception>();
 
-    // Only a 404 is swallowed — the record is already gone, which is not a teardown failure. Any
-    // other status is surfaced through EnsureStatus rather than caught, so a teardown that is
-    // genuinely broken still throws instead of failing silently. Draining clears every list it
-    // touches, so calling Drain() again has nothing left to delete and cannot throw.
-    private static async Task DeleteAll(List<int> ids, Func<int, Task<ApiResponse<object?>>> delete)
-    {
-        foreach (var id in ids)
+        foreach (var (ids, delete) in new (List<int>, Func<int, Task<ApiResponse<object?>>>)[]
+                 {
+                     (_visitIds, _visits.Delete),
+                     (_petIds, _pets.Delete),
+                     (_ownerIds, _owners.Delete),
+                     (_petTypeIds, _petTypes.Delete),
+                 })
         {
-            var response = await delete(id);
-            if (response.StatusCode != HttpStatusCode.NotFound)
+            try
             {
-                response.EnsureStatus(HttpStatusCode.NoContent);
+                await DeleteAll(ids, delete);
+            }
+            catch (Exception error)
+            {
+                failures.Add(error);
             }
         }
 
-        ids.Clear();
+        if (failures.Count == 1) throw failures[0];
+        if (failures.Count > 1)
+        {
+            throw new AggregateException(
+                $"{failures.Count} of the four teardown passes failed; every pass still ran.", failures);
+        }
+    }
+
+    /*
+     * 204 or 404 -- the record went, or it was already gone, and neither is a teardown failure. Any
+     * other status still throws, so a genuinely broken teardown is never silent.
+     *
+     * `ids.Clear()` is in a `finally`, and that is the load-bearing half: it used to sit after the
+     * loop, so a throw halfway through left the ids behind and a second `Drain()` would retry deletes
+     * that had already succeeded. The two ideas are one fix -- drain everything, then report.
+     *
+     * The `if (StatusCode != NotFound) EnsureStatus(NoContent)` this replaces expressed "204 or 404"
+     * as a branch. `EnsureStatus` takes `params` now, so the pair is stated once and there is no
+     * branch left to get wrong.
+     */
+    private static async Task DeleteAll(List<int> ids, Func<int, Task<ApiResponse<object?>>> delete)
+    {
+        try
+        {
+            foreach (var id in ids)
+            {
+                (await delete(id)).EnsureStatus(HttpStatusCode.NoContent, HttpStatusCode.NotFound);
+            }
+        }
+        finally
+        {
+            ids.Clear();
+        }
     }
 }
