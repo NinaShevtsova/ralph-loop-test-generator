@@ -23,8 +23,8 @@
 | S10 | wave-6 | TestDataProvider and the case POCOs, keyed by the AC tag | done |
 | S11 | wave-6 | BDD wiring: hooks, DI registration, non-parallelisable assembly | done |
 | S12 | wave-7 | The 22 request steps, grouped by domain | done |
-| S13 | wave-8 | Feature file skeletons for F-01, F-02, F-03 | review |
-| S14 | wave-8 | The three smoke tests, the wiring canary, and their data files | todo |
+| S13 | wave-8 | Feature file skeletons for F-01, F-02, F-03 | done |
+| S14 | wave-8 | The three smoke tests, the wiring canary, and their data files | review |
 
 **Total:** 14 tasks in 8 waves.
 
