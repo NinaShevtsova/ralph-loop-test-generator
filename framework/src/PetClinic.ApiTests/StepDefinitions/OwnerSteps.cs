@@ -31,12 +31,14 @@ public sealed class OwnerSteps
 {
     private readonly OwnersService _owners;
     private readonly ScenarioState _state;
+    private readonly StatusCheck _check;
     private readonly TestDataProvider _data;
 
-    public OwnerSteps(OwnersService owners, ScenarioState state, TestDataProvider data)
+    public OwnerSteps(OwnersService owners, ScenarioState state, StatusCheck check, TestDataProvider data)
     {
         _owners = owners;
         _state = state;
+        _check = check;
         _data = data;
     }
 
@@ -57,7 +59,7 @@ public sealed class OwnerSteps
             Telephone = data.Telephone,
         };
 
-        var response = (await _owners.Create(owner)).EnsureStatus(HttpStatusCode.Created);
+        var response = _check.Expect(await _owners.Create(owner), HttpStatusCode.Created);
         var created = response.Body ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
 
         _state.CreatedOwner = created;
@@ -69,7 +71,7 @@ public sealed class OwnerSteps
     [When("the owners directory is requested")]
     public async Task TheOwnersDirectoryIsRequested()
     {
-        var response = (await _owners.GetAll()).EnsureStatus(HttpStatusCode.OK);
+        var response = _check.Expect(await _owners.GetAll(), HttpStatusCode.OK);
         _state.Set("OwnerDirectoryResponse", response);
     }
 
@@ -77,7 +79,7 @@ public sealed class OwnerSteps
     public async Task TheOwnerDetailsAreOpened()
     {
         var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id to open.");
-        var response = (await _owners.GetById(ownerId)).EnsureStatus(HttpStatusCode.OK);
+        var response = _check.Expect(await _owners.GetById(ownerId), HttpStatusCode.OK);
 
         _state.CreatedOwner = response.Body ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
         _state.Set("OwnerGetByIdResponse", response);
@@ -107,7 +109,7 @@ public sealed class OwnerSteps
             Telephone = newContacts.Telephone,
         };
 
-        var response = (await _owners.Update(ownerId, updated)).EnsureStatus(HttpStatusCode.NoContent);
+        var response = _check.Expect(await _owners.Update(ownerId, updated), HttpStatusCode.NoContent);
 
         // PUT answers 204 with no body (§7) — the id is not part of the request, so it is folded back
         // in only now, for the benefit of steps that read CreatedOwner afterwards. Stored a second
@@ -124,7 +126,7 @@ public sealed class OwnerSteps
     public async Task TheOwnerIsDeleted()
     {
         var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id to delete.");
-        var response = (await _owners.Delete(ownerId)).EnsureStatus(HttpStatusCode.NoContent);
+        var response = _check.Expect(await _owners.Delete(ownerId), HttpStatusCode.NoContent);
         _state.Set("OwnerDeleteResponse", response);
     }
 
@@ -136,7 +138,7 @@ public sealed class OwnerSteps
     public async Task AnAttemptIsMadeToOpenTheOwnerDetails()
     {
         var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id to open.");
-        var response = (await _owners.GetById(ownerId)).EnsureStatus(HttpStatusCode.NotFound);
+        var response = _check.Expect(await _owners.GetById(ownerId), HttpStatusCode.NotFound);
         _state.Set("OwnerGetByIdAfterDeleteResponse", response);
     }
 
@@ -147,7 +149,7 @@ public sealed class OwnerSteps
     public async Task TheOwnerIsDeletedAgain()
     {
         var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id to delete.");
-        var response = (await _owners.Delete(ownerId)).EnsureStatus(HttpStatusCode.NotFound);
+        var response = _check.Expect(await _owners.Delete(ownerId), HttpStatusCode.NotFound);
         _state.Set("OwnerDeleteAgainResponse", response);
     }
 
@@ -168,7 +170,7 @@ public sealed class OwnerSteps
             Type = new PetType { Id = petType.Id, Name = petType.Name },
         };
 
-        var response = (await _owners.AddPet(ownerId, pet)).EnsureStatus(HttpStatusCode.Created);
+        var response = _check.Expect(await _owners.AddPet(ownerId, pet), HttpStatusCode.Created);
         var created = response.Body ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
 
         _state.CreatedPet = created;
@@ -186,7 +188,7 @@ public sealed class OwnerSteps
         var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id.");
         var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id.");
 
-        var response = (await _owners.GetPet(ownerId, petId)).EnsureStatus(HttpStatusCode.OK);
+        var response = _check.Expect(await _owners.GetPet(ownerId, petId), HttpStatusCode.OK);
         _state.Set("OwnerGetPetResponse", response);
     }
 
@@ -211,7 +213,7 @@ public sealed class OwnerSteps
             Type = existing.Type,
         };
 
-        var response = (await _owners.UpdatePet(ownerId, petId, updated)).EnsureStatus(HttpStatusCode.NoContent);
+        var response = _check.Expect(await _owners.UpdatePet(ownerId, petId, updated), HttpStatusCode.NoContent);
 
         updated.Id = petId;
         updated.OwnerId = ownerId;

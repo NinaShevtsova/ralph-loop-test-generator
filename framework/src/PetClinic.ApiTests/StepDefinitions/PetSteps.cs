@@ -17,19 +17,21 @@ public sealed class PetSteps
 {
     private readonly PetsService _pets;
     private readonly ScenarioState _state;
+    private readonly StatusCheck _check;
     private readonly TestDataProvider _data;
 
-    public PetSteps(PetsService pets, ScenarioState state, TestDataProvider data)
+    public PetSteps(PetsService pets, ScenarioState state, StatusCheck check, TestDataProvider data)
     {
         _pets = pets;
         _state = state;
+        _check = check;
         _data = data;
     }
 
     [When("the pets directory is requested")]
     public async Task ThePetsDirectoryIsRequested()
     {
-        var response = (await _pets.GetAll()).EnsureStatus(HttpStatusCode.OK);
+        var response = _check.Expect(await _pets.GetAll(), HttpStatusCode.OK);
         _state.Set("PetDirectoryResponse", response);
     }
 
@@ -37,7 +39,7 @@ public sealed class PetSteps
     public async Task ThePetDetailsAreOpened()
     {
         var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id to open.");
-        var response = (await _pets.GetById(petId)).EnsureStatus(HttpStatusCode.OK);
+        var response = _check.Expect(await _pets.GetById(petId), HttpStatusCode.OK);
 
         _state.CreatedPet = response.Body ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
         _state.Set("PetGetByIdResponse", response);
@@ -63,7 +65,7 @@ public sealed class PetSteps
             Type = existing.Type,
         };
 
-        var response = (await _pets.Update(petId, updated)).EnsureStatus(HttpStatusCode.NoContent);
+        var response = _check.Expect(await _pets.Update(petId, updated), HttpStatusCode.NoContent);
 
         updated.Id = petId;
         updated.OwnerId = existing.OwnerId;
@@ -76,7 +78,7 @@ public sealed class PetSteps
     public async Task ThePetIsDeleted()
     {
         var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id to delete.");
-        var response = (await _pets.Delete(petId)).EnsureStatus(HttpStatusCode.NoContent);
+        var response = _check.Expect(await _pets.Delete(petId), HttpStatusCode.NoContent);
         _state.Set("PetDeleteResponse", response);
     }
 
@@ -87,7 +89,7 @@ public sealed class PetSteps
     public async Task AnAttemptIsMadeToOpenThePetDetails()
     {
         var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id to open.");
-        var response = (await _pets.GetById(petId)).EnsureStatus(HttpStatusCode.NotFound);
+        var response = _check.Expect(await _pets.GetById(petId), HttpStatusCode.NotFound);
         _state.Set("PetGetByIdAfterDeleteResponse", response);
     }
 }

@@ -16,12 +16,14 @@ public sealed class VisitSteps
 {
     private readonly VisitsService _visits;
     private readonly ScenarioState _state;
+    private readonly StatusCheck _check;
     private readonly TestDataProvider _data;
 
-    public VisitSteps(VisitsService visits, ScenarioState state, TestDataProvider data)
+    public VisitSteps(VisitsService visits, ScenarioState state, StatusCheck check, TestDataProvider data)
     {
         _visits = visits;
         _state = state;
+        _check = check;
         _data = data;
     }
 
@@ -41,7 +43,7 @@ public sealed class VisitSteps
             Date = data.Date,
         };
 
-        var response = (await _visits.AddVisit(ownerId, petId, visit)).EnsureStatus(HttpStatusCode.Created);
+        var response = _check.Expect(await _visits.AddVisit(ownerId, petId, visit), HttpStatusCode.Created);
         var created = response.Body ?? throw new InvalidOperationException("POST .../visits answered 201 with no body.");
 
         _state.CreatedVisit = created;
@@ -64,7 +66,7 @@ public sealed class VisitSteps
             Date = data.Date,
         };
 
-        var response = (await _visits.Create(visit)).EnsureStatus(HttpStatusCode.Created);
+        var response = _check.Expect(await _visits.Create(visit), HttpStatusCode.Created);
         var created = response.Body ?? throw new InvalidOperationException("POST /visits answered 201 with no body.");
 
         _state.CreatedVisit = created;
@@ -75,7 +77,7 @@ public sealed class VisitSteps
     [When("the visits log is requested")]
     public async Task TheVisitsLogIsRequested()
     {
-        var response = (await _visits.GetAll()).EnsureStatus(HttpStatusCode.OK);
+        var response = _check.Expect(await _visits.GetAll(), HttpStatusCode.OK);
         _state.Set("VisitLogResponse", response);
     }
 
@@ -83,7 +85,7 @@ public sealed class VisitSteps
     public async Task TheVisitDetailsAreOpened()
     {
         var visitId = _state.CreatedVisit.Id ?? throw new InvalidOperationException("Visit has no id to open.");
-        var response = (await _visits.GetById(visitId)).EnsureStatus(HttpStatusCode.OK);
+        var response = _check.Expect(await _visits.GetById(visitId), HttpStatusCode.OK);
 
         _state.CreatedVisit = response.Body ?? throw new InvalidOperationException("GET /visits/{visitId} answered 200 with no body.");
         _state.Set("VisitGetByIdResponse", response);
@@ -102,7 +104,7 @@ public sealed class VisitSteps
             Date = existing.Date,
         };
 
-        var response = (await _visits.Update(visitId, updated)).EnsureStatus(HttpStatusCode.NoContent);
+        var response = _check.Expect(await _visits.Update(visitId, updated), HttpStatusCode.NoContent);
 
         updated.Id = visitId;
         _state.CreatedVisit = updated;
@@ -113,7 +115,7 @@ public sealed class VisitSteps
     public async Task TheVisitIsDeleted()
     {
         var visitId = _state.CreatedVisit.Id ?? throw new InvalidOperationException("Visit has no id to delete.");
-        var response = (await _visits.Delete(visitId)).EnsureStatus(HttpStatusCode.NoContent);
+        var response = _check.Expect(await _visits.Delete(visitId), HttpStatusCode.NoContent);
         _state.Set("VisitDeleteResponse", response);
     }
 
@@ -124,7 +126,7 @@ public sealed class VisitSteps
     public async Task AnAttemptIsMadeToOpenTheVisitDetails()
     {
         var visitId = _state.CreatedVisit.Id ?? throw new InvalidOperationException("Visit has no id to open.");
-        var response = (await _visits.GetById(visitId)).EnsureStatus(HttpStatusCode.NotFound);
+        var response = _check.Expect(await _visits.GetById(visitId), HttpStatusCode.NotFound);
         _state.Set("VisitGetByIdAfterDeleteResponse", response);
     }
 }

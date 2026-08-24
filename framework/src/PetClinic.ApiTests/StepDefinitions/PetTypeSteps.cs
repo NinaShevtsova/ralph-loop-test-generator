@@ -16,12 +16,14 @@ public sealed class PetTypeSteps
 {
     private readonly PetTypesService _petTypes;
     private readonly ScenarioState _state;
+    private readonly StatusCheck _check;
     private readonly TestDataProvider _data;
 
-    public PetTypeSteps(PetTypesService petTypes, ScenarioState state, TestDataProvider data)
+    public PetTypeSteps(PetTypesService petTypes, ScenarioState state, StatusCheck check, TestDataProvider data)
     {
         _petTypes = petTypes;
         _state = state;
+        _check = check;
         _data = data;
     }
 
@@ -34,7 +36,7 @@ public sealed class PetTypeSteps
         var data = _data.For<PetTypeCase>();
         var petType = new PetType { Name = UniqueData.PetTypeName(data.Name) };
 
-        var response = (await _petTypes.Create(petType)).EnsureStatus(HttpStatusCode.Created);
+        var response = _check.Expect(await _petTypes.Create(petType), HttpStatusCode.Created);
         var created = response.Body ?? throw new InvalidOperationException("POST /pettypes answered 201 with no body.");
 
         _state.CreatedPetType = created;
@@ -54,7 +56,7 @@ public sealed class PetTypeSteps
     [When("the pet types directory is requested")]
     public async Task ThePetTypesDirectoryIsRequested()
     {
-        var response = (await _petTypes.GetAll()).EnsureStatus(HttpStatusCode.OK);
+        var response = _check.Expect(await _petTypes.GetAll(), HttpStatusCode.OK);
         var directory = response.Body ?? new List<PetType>();
 
         if (directory.Count > 0)
@@ -69,7 +71,7 @@ public sealed class PetTypeSteps
     public async Task ThePetTypeDetailsAreOpened()
     {
         var petTypeId = _state.CreatedPetType.Id ?? throw new InvalidOperationException("Pet type has no id to open.");
-        var response = (await _petTypes.GetById(petTypeId)).EnsureStatus(HttpStatusCode.OK);
+        var response = _check.Expect(await _petTypes.GetById(petTypeId), HttpStatusCode.OK);
 
         _state.CreatedPetType = response.Body ?? throw new InvalidOperationException("GET /pettypes/{petTypeId} answered 200 with no body.");
         _state.Set("PetTypeGetByIdResponse", response);
@@ -79,7 +81,7 @@ public sealed class PetTypeSteps
     public async Task ThePetTypeIsDeleted()
     {
         var petTypeId = _state.CreatedPetType.Id ?? throw new InvalidOperationException("Pet type has no id to delete.");
-        var response = (await _petTypes.Delete(petTypeId)).EnsureStatus(HttpStatusCode.NoContent);
+        var response = _check.Expect(await _petTypes.Delete(petTypeId), HttpStatusCode.NoContent);
         _state.Set("PetTypeDeleteResponse", response);
     }
 }
