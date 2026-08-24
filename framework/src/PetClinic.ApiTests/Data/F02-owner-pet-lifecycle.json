@@ -24,5 +24,18 @@
       "name": "Pet",
       "birthDate": "2019-03-02"
     }
+  },
+  "AC-F02-03": {
+    "owner": {
+      "firstName": "Ihor",
+      "lastName": "Boyko",
+      "address": "3 Sadova Street",
+      "city": "Rivne",
+      "telephone": "0951234567"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2021-07-09"
+    }
   }
 }

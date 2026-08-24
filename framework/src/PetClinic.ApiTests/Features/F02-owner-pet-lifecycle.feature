@@ -29,3 +29,15 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     Then the created pet has an assigned id, the submitted values and a link to the owner
     When the pets directory is requested
     Then the pet appears exactly once in the pets list with the submitted values
+
+  @AC-F02-03 @US-02
+  Scenario: AC-F02-03 a rename in the pet details is visible in the owner details
+    Given an owner is registered
+    And the pet types directory is requested
+    And a pet is added to the owner
+    When the pet details are updated
+    Then the pet update returns no pet data
+    When the owner details are opened
+    Then the owner details show the pet with its new name
+    When the pet is opened from the owner details
+    Then the pet opened from the owner details carries the new name

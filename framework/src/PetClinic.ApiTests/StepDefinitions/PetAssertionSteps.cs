@@ -122,4 +122,31 @@ public sealed class PetAssertionSteps
         listed.Name.Should().Be(added.Name, $"pet {petId}'s entry in the pets list must carry the submitted name");
         listed.Type.Id.Should().Be(added.Type.Id, $"pet {petId}'s entry in the pets list must carry the submitted type id");
     }
+
+    // AC-F02-03 step 1: EnsureStatus inside "the pet details are updated" already covers "code 204";
+    // this is the other half §7 states for every PUT -- the same "empty body" check
+    // OwnerAssertionSteps already applies to the owner's own PUT, now for the direct pet route.
+    [Then("the pet update returns no pet data")]
+    public void ThePetUpdateReturnsNoPetData()
+    {
+        var petId = _state.CreatedPet.Id;
+        var response = _state.Get<ApiResponse<object?>>("PetUpdateResponse");
+
+        response.RawContent.Should().BeNullOrEmpty($"pet {petId}'s update must answer with an empty body (§7)");
+    }
+
+    // AC-F02-03 step 3: compared against _state.CreatedPet.Name -- "the pet details are updated"
+    // already folded the new name into CreatedPet once the PUT succeeded, so this is the same
+    // "compare against what was actually sent" rule, now for the route the AC itself did not use to
+    // make the change.
+    [Then("the pet opened from the owner details carries the new name")]
+    public void ThePetOpenedFromTheOwnerDetailsCarriesTheNewName()
+    {
+        var nested = _state.Get<ApiResponse<Pet>>("OwnerGetPetResponse").Body
+            ?? throw new InvalidOperationException("GET /owners/{ownerId}/pets/{petId} answered 200 with no body.");
+        var expectedName = _state.CreatedPet.Name;
+        var petId = _state.CreatedPet.Id;
+
+        nested.Name.Should().Be(expectedName, $"pet {petId} opened through its owner must show the renamed value");
+    }
 }

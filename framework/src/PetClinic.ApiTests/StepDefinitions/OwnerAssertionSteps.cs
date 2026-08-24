@@ -248,4 +248,24 @@ public sealed class OwnerAssertionSteps
         pet.BirthDate.Should().Be(addedPet.BirthDate, $"owner {ownerId}'s pet {petId} must show the submitted birth date");
         pet.Type.Id.Should().Be(addedPet.Type.Id, $"owner {ownerId}'s pet {petId} must show the type from the directory");
     }
+
+    // AC-F02-03 step 2: compared against _state.CreatedPet.Name -- "the pet details are updated"
+    // already folded the new name into CreatedPet once the PUT succeeded, so the owner-nested
+    // reading is checked against that, not against the pre-rename addition response.
+    [Then("the owner details show the pet with its new name")]
+    public void TheOwnerDetailsShowThePetWithItsNewName()
+    {
+        var owner = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
+        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Created pet carries no id.");
+        var expectedName = _state.CreatedPet.Name;
+        var ownerId = owner.Id;
+
+        owner.Pets.Should().NotBeNull($"owner {ownerId}'s response must carry a pets field")
+            .And.ContainSingle(p => p.Id == petId,
+                $"owner {ownerId}'s details must show exactly one entry for pet {petId} after the rename");
+
+        var pet = owner.Pets!.Single(p => p.Id == petId);
+        pet.Name.Should().Be(expectedName, $"owner {ownerId}'s pet {petId} must show the new name, not the one it was created with");
+    }
 }
