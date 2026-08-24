@@ -84,6 +84,17 @@ of `application/json`, timeout. Immutable, with a static `Default(TestSettings)`
 `RawContent`, `Headers` and `EnsureStatus(HttpStatusCode)` which throws with `RawContent` in the
 message — that message is what makes a wrong code diagnosable at the request site (rubric 17).
 
+**The response carries the request that produced it, and a failure message names it.** `ApiClient`
+has the verb and the resolved URL in hand — RestSharp puts them on the response — and dropping them
+is the difference between a message an operator can act on and one they cannot. Measured on the build
+that dropped them: every failure in the suite read `Expected HTTP 204 NoContent but got 404 NotFound.
+Response body:` — no verb, no URL, no id. On a 404 the body is empty by §7, so the commonest failure
+of all carried nothing. The form that works: `DELETE http://…/owners/117 → 404 NotFound. Body: (empty)`.
+
+**The guard accepts SEVERAL acceptable codes.** More than one code is legitimate for one call —
+teardown deletes answer `204` or `404` and both are fine — and the alternative is a hand-written `if`
+around the check. That branch is where a real teardown defect lived: see S7.
+
 ### S5 — Services
 
 **Files:** `PROJECT/Services/OwnersService.cs`, `PetsService.cs`, `VisitsService.cs`,
@@ -133,6 +144,14 @@ specifically (not any exception), and a second `Drain()` does not throw.
 
 The order is mandatory, not stylistic: an owner with two pets of the same type cannot be deleted —
 the request answers `404` and nothing is removed (§11).
+
+**Every list drains even when one of them fails, and the ids are cleared in a `finally`.** The order
+stays visits → pets → owners → pet types, because the API refuses to delete a parent that still has
+children. What must not happen is the shape measured on an earlier build: the clear sat *after* the
+loop and a failure threw straight out of the first pass, so the three later lists were never touched
+and the first was never cleared. One `500` on a visit left an owner, a pet and a pet type in the
+database, and the next scenario saw another scenario's data. Collect the failures, drain everything,
+then throw once.
 
 ### S8 — ReadinessProbe
 
@@ -230,6 +249,27 @@ property would serialise as `"visits": []` needs the guard that stops it: §11 r
 a read-only field as a `500` on save, and `AC-F03-04` and `AC-F02-10` assert on the very history such
 a body would erase.
 Sentences are in domain language: `the owner details are opened`, not `GET owners by id`.
+
+**A wrong response code means one of two things, and the SCENARIO decides which.** A code that fails
+in a `Given` means the setup broke — nothing has been tested yet, so it must surface as an **error**. A
+code that fails in a `When` or `Then` means the acceptance criterion does not hold — a **failure**,
+carrying a `because` and usable inside an `AssertionScope`. Rubric item 19 asks for exactly this
+distinction, and one exception type for both erases it on every scenario.
+
+**The role cannot be chosen at the call site, and that is the whole design constraint.** Five sentences
+carry `[Given]` and `[When]` both — "an owner is registered" is the criterion of `AC-F01-01` and the
+precondition of three other ACs — so the same method body serves both roles. Splitting the method in
+two would duplicate those five steps, which is the reuse-by-rewording `steps:inventory` forbids.
+Reqnroll reports which keyword matched the running step, including resolving an `And` to whatever
+opened the block; read the role from there. `Support/` is the place for it, not `Http/` — the transport
+layer must not know about Gherkin.
+
+Teardown and the smoke tests keep the plain guard: `[AfterScenario]` and plain NUnit have no current
+step, and a teardown failure is infrastructure in every case.
+
+**Every service call in a step ends in a check.** Not "never assert a code by hand" — that forbids one
+spelling out of at least five and is silently vacuous on any project that asserts another way. The
+gate asks the positive question.
 
 ### S13 — Feature skeletons
 
