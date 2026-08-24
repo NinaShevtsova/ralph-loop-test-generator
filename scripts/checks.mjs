@@ -213,6 +213,89 @@ export function forbiddenApis(source) {
 // `\s+` between the two words, because `Scenario  Outline:` with two spaces slipped past. Gherkin
 // prose is excluded first: `# Examples: see the AC list` and `Examples: none` inside a `"""` docstring
 // both used to REJECT a legitimate turn, and a false positive here costs an iteration.
+/*
+ * Scenarios where a `When` is not answered by a `Then` before the next one -- rubric item 4.
+ *
+ * The prompt states this rule in one sentence ("each AC step is one `When` (exactly one request)
+ * followed by its `Then`") and the rule was still broken: measured on AC-F01-02, where `When the
+ * owner's details are updated` ran straight into a second `When` with nothing asserted in between,
+ * and the judge spent $2.26 saying so. A request whose result nothing looks at is a step that cannot
+ * fail, which is the same defect as an assertion that cannot fail -- it just hides one level up.
+ *
+ * `And`/`But` continue whichever primary keyword opened the block, which is what makes this a walk
+ * rather than a regex: `When ... And ...` is one two-line request block, and the `Then` that answers
+ * it may itself be `Then ... And ...`.
+ */
+export function whenWithoutThen(feature) {
+  const problems = [];
+  let scenario = null;
+  let openWhen = null;
+  let answered = true;
+  let keyword = null;
+
+  const closeScenario = () => {
+    if (!answered && openWhen !== null) {
+      problems.push(`${scenario}: "${openWhen.text}" (line ${openWhen.line}) has no Then after it`);
+    }
+  };
+
+  withoutGherkinProse(feature)
+    .split('\n')
+    .forEach((raw, index) => {
+      const line = raw.trim();
+      const scenarioTitle = /^Scenario\s*:\s*(.+)$/.exec(line);
+      if (scenarioTitle !== null) {
+        closeScenario();
+        scenario = scenarioTitle[1].trim();
+        openWhen = null;
+        answered = true;
+        keyword = null;
+        return;
+      }
+      if (scenario === null) return;
+
+      const step = /^(Given|When|Then|And|But)\s+(.*)$/.exec(line);
+      if (step === null) return;
+      const [, word, text] = step;
+      if (word !== 'And' && word !== 'But') keyword = word;
+
+      if (keyword === 'When' && (word === 'When')) {
+        closeScenario();
+        openWhen = { text, line: index + 1 };
+        answered = false;
+      } else if (keyword === 'Then' && openWhen !== null) {
+        answered = true;
+      }
+    });
+
+  closeScenario();
+  return problems;
+}
+
+/*
+ * Response codes asserted by hand in a step definition -- rubric items 6 and 18.
+ *
+ * `EnsureStatus` inside the request step has already enforced the code before the response reaches
+ * state, so a `Then` that asserts it again writes an assertion that CANNOT FAIL. Measured on
+ * AC-F01-03: `response.StatusCode.Should().Be(HttpStatusCode.NotFound, ...)` sat after a `When` whose
+ * `EnsureStatus(NotFound)` had already guaranteed it, and the judge charged $2.39 to point it out.
+ *
+ * Stated as an ABSOLUTE rather than scoped to `[Then]` methods, and that was measured too: the
+ * accepted stage-0 scaffold plus all four F-01 scenarios contain the string zero times, because every
+ * code in this design goes through `EnsureStatus`. Scoping it would need a C# body parser to buy
+ * nothing. If a project ever needs a hand-written code assertion, this is the rule to revisit -- not
+ * the one to work around.
+ */
+export function handAssertedStatusCodes(sources) {
+  return (sources ?? []).flatMap((source) =>
+    scan(source.text ?? '', /StatusCode\s*.\s*Should\s*\(/g).map((hit) => ({
+      path: source.path,
+      line: hit.line,
+      match: hit.match,
+    }))
+  );
+}
+
 /** `Scenario Outline` / `Examples` in a feature file. */
 export function scenarioOutlines(feature) {
   return scan(

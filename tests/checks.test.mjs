@@ -7,6 +7,8 @@ import {
   literalIdsInFeature,
   literalIdsInData,
   forbiddenApis,
+  whenWithoutThen,
+  handAssertedStatusCodes,
   scenarioOutlines,
   foreignLanguageHeader,
   scenarioTags,
@@ -448,4 +450,106 @@ test('exempting the path does not exempt the framework it sits beside', () => {
     outsideFence(['framework/src/PetClinic.ApiTests/Support/ResourceTracker.cs']),
     ['framework/src/PetClinic.ApiTests/Support/ResourceTracker.cs']
   );
+});
+
+// ── Rubric item 4, as a check ────────────────────────────────────────────
+
+test('whenWithoutThen is silent on strict When/Then alternation', () => {
+  // The shape all four accepted F-01 scenarios use.
+  const feature = [
+    'Scenario: AC-F01-01 a registered owner is visible',
+    '    When an owner is registered',
+    '    Then the created owner has an assigned id',
+    '    When the owner details are opened',
+    '    Then the owner details show the submitted values',
+  ].join('\n');
+  assert.deepEqual(whenWithoutThen(feature), []);
+});
+
+test('whenWithoutThen reports a When that runs straight into another When', () => {
+  // Measured on AC-F01-02: `When the owner details are updated` followed by a second When with
+  // nothing asserted between them. The judge charged $2.26 to find it; this costs nothing.
+  const feature = [
+    'Scenario: AC-F01-02 updated owner contacts are visible',
+    '    Given an owner is registered',
+    "    When the owner's details are updated",
+    '    When the owner details are opened',
+    '    Then the owner details show the updated contacts',
+  ].join('\n');
+  const problems = whenWithoutThen(feature);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /owner's details are updated/);
+});
+
+test('whenWithoutThen reports a trailing When at the end of a scenario', () => {
+  // The other shape of the same defect: a request nobody looks at because the scenario simply stops.
+  const feature = 'Scenario: x\n    When a thing happens\n';
+  assert.equal(whenWithoutThen(feature).length, 1);
+});
+
+test('whenWithoutThen treats And after When as part of the same request block', () => {
+  // `And` continues whichever primary keyword opened the block, which is why this is a walk and not a
+  // regex. Reading the And as its own When would report the accepted AC-F01-04 scenario.
+  const feature = [
+    'Scenario: AC-F01-04 deregistering an owner removes their pet',
+    '    Given a pet type is added to the directory',
+    '    And an owner is registered',
+    '    When the owner is deleted',
+    '    And the owners directory is requested',
+    '    Then the owner is missing from the owners list',
+    '    And the pet is gone too',
+  ].join('\n');
+  assert.deepEqual(whenWithoutThen(feature), []);
+});
+
+test('whenWithoutThen does not carry state across scenarios', () => {
+  // An unanswered When in one scenario must be reported against THAT scenario and must not silence
+  // or accuse the next one.
+  const feature = [
+    'Scenario: first',
+    '    When a thing happens',
+    'Scenario: second',
+    '    When another thing happens',
+    '    Then it is checked',
+  ].join('\n');
+  const problems = whenWithoutThen(feature);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /^first:/);
+});
+
+// ── Rubric items 6 and 18, as a check ────────────────────────────────────
+
+test('handAssertedStatusCodes is silent on steps that leave the code to EnsureStatus', () => {
+  const source = { path: 'OwnerSteps.cs', text: 'var r = (await _owners.Create(o)).EnsureStatus(HttpStatusCode.Created);' };
+  assert.deepEqual(handAssertedStatusCodes([source]), []);
+});
+
+test('handAssertedStatusCodes reports an assertion the When already guaranteed', () => {
+  // Measured on AC-F01-03: the When called EnsureStatus(NotFound) before the response reached state,
+  // so this line could never fail. Dead assertion weight, and an iteration to remove it.
+  const source = { path: 'OwnerAssertionSteps.cs', text: 'r.StatusCode.Should().Be(HttpStatusCode.NotFound, "because ...");' };
+  const hits = handAssertedStatusCodes([source]);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].path, 'OwnerAssertionSteps.cs');
+  assert.equal(hits[0].line, 1);
+});
+
+test('handAssertedStatusCodes tolerates the whitespace C# allows', () => {
+  const spellings = [
+    'r.StatusCode .Should() .Be(x);',
+    'r.StatusCode	.Should	();',
+  ];
+  for (const text of spellings) {
+    assert.equal(handAssertedStatusCodes([{ path: 'A.cs', text }]).length, 1, text);
+  }
+});
+
+test('handAssertedStatusCodes reports every hit and an empty list for no sources', () => {
+  const hits = handAssertedStatusCodes([
+    { path: 'A.cs', text: 'x.StatusCode.Should().Be(1);\ny.StatusCode.Should().Be(2);' },
+  ]);
+  assert.equal(hits.length, 2);
+  assert.deepEqual(hits.map((h) => h.line), [1, 2]);
+  assert.deepEqual(handAssertedStatusCodes([]), []);
+  assert.deepEqual(handAssertedStatusCodes(), []);
 });

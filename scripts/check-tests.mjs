@@ -34,6 +34,8 @@ import {
   literalIdsInFeature,
   literalIdsInData,
   forbiddenApis,
+  whenWithoutThen,
+  handAssertedStatusCodes,
   scenarioOutlines,
   foreignLanguageHeader,
   scenarioTags,
@@ -257,6 +259,17 @@ if (!existsSync(featurePath)) {
       'Examples — §10.8 forbids it, a skipped case would be invisible in the trace'
   );
 
+  // Rubric item 4, moved out of the judge. The prompt already states the rule in a sentence and the
+  // rule was still broken on AC-F01-02, at $2.26 for the judge to say so — a request nothing asserts
+  // on is a step that cannot fail, and the gate can see that for nothing.
+  const unanswered = whenWithoutThen(feature);
+  v.check(
+    unanswered.length === 0,
+    `${flowSlug}.feature: every When is answered by a Then`,
+    `${flowSlug}.feature: ${unanswered.join('; ')} — each AC step is one When (exactly one request) ` +
+      'followed by its Then. A request whose result nothing looks at proves nothing'
+  );
+
   // The flow's Test plan table already holds the exact expected name of every test.
   const flowDoc = join(ROOT, flowDocPath(flowGroup));
   const flowText = existsSync(flowDoc) ? readFileSync(flowDoc, 'utf8') : '';
@@ -357,6 +370,16 @@ for (const file of stepFiles) {
     `${rel(file)}: no waits and no disabled tests`,
     `${rel(file)}: ${forbidden.map((h) => `line ${h.line} (${h.match})`).join(', ')} — ` +
       'a wait makes a flaky test pass, and Ignore/Assert.Pass switches the test off'
+  );
+
+  // Rubric items 6 and 18, moved out of the judge for the same reason as the When/Then check above.
+  const byHand = handAssertedStatusCodes([{ path: rel(file), text: source }]);
+  v.check(
+    byHand.length === 0,
+    `${rel(file)}: response codes are left to EnsureStatus`,
+    `${rel(file)}: ${byHand.map((h) => `line ${h.line}`).join(', ')} assert a status code by hand — ` +
+      'the request step already called EnsureStatus before the response reached state, so this ' +
+      'assertion cannot fail. Measured on AC-F01-03, where it cost an iteration'
   );
 }
 
