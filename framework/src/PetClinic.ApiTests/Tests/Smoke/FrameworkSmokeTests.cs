@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text.Json;
 using FluentAssertions;
 using NUnit.Framework;
 using PetClinic.ApiTests.Config;
@@ -7,6 +6,7 @@ using PetClinic.ApiTests.Http;
 using PetClinic.ApiTests.Models;
 using PetClinic.ApiTests.Services;
 using PetClinic.ApiTests.Support;
+using PetClinic.ApiTests.TestData;
 using PetClinic.ApiTests.TestData.Cases;
 
 namespace PetClinic.ApiTests.Tests.Smoke;
@@ -167,15 +167,17 @@ public sealed class FrameworkSmokeTests
         await secondDrain.Should().NotThrowAsync("draining an already-empty tracker must be a no-op, not a failure");
     }
 
-    // Mechanism: a data provider resolving its JSON block by the running test's own method name,
-    // out of Data/FrameworkSmokeTests.json — the shape TestDataProvider itself cannot take here,
-    // since it is a Reqnroll type resolved from a real ScenarioContext/FeatureContext (D-15), which
-    // a plain NUnit fixture has none of. This is the internal seam that lets a smoke test still
-    // prove "one block, found by name, deserialised into a case object" without a running scenario.
+    // Mechanism: TestDataProvider resolving its JSON block by the running test's own method name,
+    // out of Data/FrameworkSmokeTests.json. Calls TestDataProvider.LoadCase — the same internal
+    // seam For<T>() itself delegates to — rather than a from-scratch reimplementation, so this test
+    // and every scenario's For<T>() call share one lookup/deserialisation path that cannot diverge.
+    // A plain NUnit fixture has neither a ScenarioContext nor a FeatureContext to build a
+    // TestDataProvider instance from (D-15), which is why the seam is a static entry point keyed by
+    // file path + block key rather than the instance method itself.
     [Test]
     public void Smoke_data_resolves_by_method_name()
     {
-        var owner = LoadCase<OwnerCase>("owner");
+        var owner = LoadCase<OwnerCase>();
 
         owner.FirstName.Should().Be("Smoke");
         owner.LastName.Should().Be("Databee");
@@ -183,23 +185,9 @@ public sealed class FrameworkSmokeTests
         owner.Telephone.Should().Be("0671234567");
     }
 
-    private static T LoadCase<T>(string propertyName, [System.Runtime.CompilerServices.CallerMemberName] string methodName = "")
+    private static T LoadCase<T>([System.Runtime.CompilerServices.CallerMemberName] string methodName = "")
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Data", "FrameworkSmokeTests.json");
-        using var stream = File.OpenRead(path);
-        using var document = JsonDocument.Parse(stream);
-
-        if (!document.RootElement.TryGetProperty(methodName, out var block))
-        {
-            throw new InvalidOperationException($"'{path}' has no block for method '{methodName}'.");
-        }
-
-        if (!block.TryGetProperty(propertyName, out var element))
-        {
-            throw new InvalidOperationException($"Block '{methodName}' in '{path}' has no '{propertyName}' entry.");
-        }
-
-        return element.Deserialize<T>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-            ?? throw new InvalidOperationException($"Block '{methodName}' entry '{propertyName}' deserialised to null.");
+        return TestDataProvider.LoadCase<T>(path, methodName);
     }
 }

@@ -27,20 +27,37 @@ public sealed class TestDataProvider
     public T For<T>()
     {
         var acTag = ResolveAcTag();
-        var block = ResolveCaseBlock(acTag);
-        var propertyName = CasePropertyName(typeof(T));
+        var filePath = ResolveDataFile();
+        return LoadCase<T>(filePath, acTag);
+    }
 
+    // Internal seam: the exact JSON lookup and deserialisation For<T>() uses, taking a raw file path
+    // and block key instead of pulling them from ScenarioContext/FeatureContext. This is what lets
+    // FrameworkSmokeTests's Smoke_data_resolves_by_method_name prove the provider's own resolution
+    // mechanism from a plain NUnit fixture, which has neither context to construct a TestDataProvider
+    // from (D-15) — the two callers share this one method, so they cannot silently diverge.
+    internal static T LoadCase<T>(string filePath, string blockKey)
+    {
+        using var stream = File.OpenRead(filePath);
+        using var document = JsonDocument.Parse(stream);
+
+        if (!document.RootElement.TryGetProperty(blockKey, out var block))
+        {
+            throw new InvalidOperationException($"'{filePath}' has no block for key '{blockKey}'.");
+        }
+
+        var propertyName = CasePropertyName(typeof(T));
         if (!block.TryGetProperty(propertyName, out var element))
         {
             var known = string.Join(", ", EnumeratePropertyNames(block));
             throw new InvalidOperationException(
-                $"AC block '{acTag}' has no '{propertyName}' entry needed to build a {typeof(T).Name}. " +
+                $"Block '{blockKey}' in '{filePath}' has no '{propertyName}' entry needed to build a {typeof(T).Name}. " +
                 $"Entries present: {(known.Length == 0 ? "(none)" : known)}.");
         }
 
         return element.Deserialize<T>(JsonOptions)
             ?? throw new InvalidOperationException(
-                $"AC block '{acTag}' entry '{propertyName}' deserialised to null for {typeof(T).Name}.");
+                $"Block '{blockKey}' entry '{propertyName}' in '{filePath}' deserialised to null for {typeof(T).Name}.");
     }
 
     // OwnerCase -> "owner", PetTypeCase -> "petType": strips the "Case" suffix and lower-cases the
@@ -66,20 +83,6 @@ public sealed class TestDataProvider
         }
 
         return acTag;
-    }
-
-    private JsonElement ResolveCaseBlock(string acTag)
-    {
-        var filePath = ResolveDataFile();
-        using var stream = File.OpenRead(filePath);
-        using var document = JsonDocument.Parse(stream);
-
-        if (!document.RootElement.TryGetProperty(acTag, out var block))
-        {
-            throw new InvalidOperationException($"'{filePath}' has no block for tag '{acTag}'.");
-        }
-
-        return block.Clone();
     }
 
     // Found by the flow tag, not looked up in a hard-coded map: a feature tagged @F01 reads the
