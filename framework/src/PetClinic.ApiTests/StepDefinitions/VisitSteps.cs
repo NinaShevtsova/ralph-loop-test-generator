@@ -47,6 +47,13 @@ public sealed class VisitSteps
         var created = response.Body ?? throw new InvalidOperationException("POST .../visits answered 201 with no body.");
 
         _state.CreatedVisit = created;
+
+        // Stored separately from CreatedVisit: AC-F02-05 reopens this visit through "the visit
+        // details are opened" after the pet's own update, and that step overwrites CreatedVisit
+        // with its own fetched body -- an assertion comparing the fetch against what was actually
+        // submitted needs this copy, not the overwritten one (same reason OwnerSteps keeps
+        // OwnerAddPetRequest next to CreatedPet).
+        _state.Set("VisitAddRequest", visit);
         _state.Set("VisitAddResponse", response);
         _state.Tracker.TrackVisit(created.Id ?? throw new InvalidOperationException("Created visit carries no id."));
     }

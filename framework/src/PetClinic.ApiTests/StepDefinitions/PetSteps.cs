@@ -71,6 +71,11 @@ public sealed class PetSteps
         updated.OwnerId = existing.OwnerId;
         updated.Visits = existing.Visits;
         _state.CreatedPet = updated;
+
+        // Mirrors OwnerUpdatePetRequest (the owner-nested route): the PUT's own response carries no
+        // body (§7), so a later step comparing a fresh GET against "what was actually sent" needs
+        // this copy, since CreatedPet itself gets overwritten again by whichever read step runs next.
+        _state.Set("PetUpdateRequest", updated);
         _state.Set("PetUpdateResponse", response);
     }
 

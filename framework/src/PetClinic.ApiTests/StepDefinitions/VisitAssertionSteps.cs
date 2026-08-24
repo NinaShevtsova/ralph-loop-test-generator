@@ -44,4 +44,23 @@ public sealed class VisitAssertionSteps
         log.Should().NotContain(v => v.Id == visitId,
             $"visit {visitId} must no longer appear in the visits log once its pet has been removed");
     }
+
+    // AC-F02-05 step 4: compared against VisitAddRequest -- the exact body "a visit is recorded for
+    // the pet" put on the wire -- not against _state.CreatedVisit, since "the visit details are
+    // opened" (the very step that performs this GET) overwrites CreatedVisit with its own fetched
+    // body before this Then ever runs, the same reason PetAssertionSteps compares the pet's own
+    // update against a request key instead of CreatedPet.
+    [Then("the visit still shows the description and date it was recorded with")]
+    public void TheVisitStillShowsTheDescriptionAndDateItWasRecordedWith()
+    {
+        var fetched = _state.Get<ApiResponse<Visit>>("VisitGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /visits/{visitId} answered 200 with no body.");
+        var submitted = _state.Get<Visit>("VisitAddRequest");
+        var petId = _state.CreatedPet.Id;
+        var visitId = fetched.Id;
+
+        fetched.PetId.Should().Be(petId, $"visit {visitId} must still belong to pet {petId} after the pet's own update");
+        fetched.Description.Should().Be(submitted.Description, $"visit {visitId}'s description must be unaffected by changing pet {petId}'s data");
+        fetched.Date.Should().Be(submitted.Date, $"visit {visitId}'s date must be unaffected by changing pet {petId}'s data");
+    }
 }

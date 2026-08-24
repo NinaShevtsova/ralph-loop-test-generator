@@ -53,3 +53,18 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     Then the pet details show the name that was set through the owner
     When the owner details are opened
     Then the owner details show the pet with its new name
+
+  @AC-F02-05 @US-02 @US-05
+  Scenario: AC-F02-05 editing a pet's data does not wipe the visit history
+    Given an owner is registered
+    And the pet types directory is requested
+    And a pet is added to the owner
+    And a visit is recorded for the pet
+    When the pet details are opened
+    Then the pet details show the visit that was recorded for it
+    When the pet details are updated
+    Then the pet update returns no pet data
+    When the pet details are opened
+    Then the pet details show the new name and an unaffected visit history
+    When the visit details are opened
+    Then the visit still shows the description and date it was recorded with

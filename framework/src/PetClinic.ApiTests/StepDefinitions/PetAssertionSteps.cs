@@ -180,4 +180,52 @@ public sealed class PetAssertionSteps
         fetched.Name.Should().Be(submitted.Name, $"pet {petId}'s own details must show the name that was set through the owner");
         fetched.OwnerId.Should().Be(ownerId, $"pet {petId} must still be linked to owner {ownerId} after being renamed through the owner");
     }
+
+    // AC-F02-05 step 1: reads the pet's own GET response rather than CreatedVisit's creation
+    // response, to confirm the just-recorded visit is already visible through this route before
+    // the update this AC exercises even runs.
+    [Then("the pet details show the visit that was recorded for it")]
+    public void ThePetDetailsShowTheVisitThatWasRecordedForIt()
+    {
+        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
+
+        AssertVisitUnaffected(fetched, _state.CreatedVisit);
+    }
+
+    // AC-F02-05 step 3: the name is compared against PetUpdateRequest -- the exact body "the pet
+    // details are updated" put on the wire -- rather than _state.CreatedPet, since "the pet details
+    // are opened" (the very step that performs this GET) overwrites CreatedPet with its own fetched
+    // body before this Then ever runs. The visit half reuses the same check step 1 already made:
+    // a rename through PUT /pets/{petId} without a visits field must leave the recorded visit
+    // exactly as it was.
+    [Then("the pet details show the new name and an unaffected visit history")]
+    public void ThePetDetailsShowTheNewNameAndAnUnaffectedVisitHistory()
+    {
+        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
+        var submitted = _state.Get<Pet>("PetUpdateRequest");
+        var petId = fetched.Id;
+
+        fetched.Name.Should().Be(submitted.Name, $"pet {petId}'s own details must show the new name after the update");
+
+        AssertVisitUnaffected(fetched, _state.CreatedVisit);
+    }
+
+    // Shared by both AC-F02-05 Then steps above: the visit's id, description and date must still be
+    // the ones "a visit is recorded for the pet" created, whether read right after recording it or
+    // again after the pet's name was changed by a PUT that never submitted a visits field.
+    private static void AssertVisitUnaffected(Pet pet, Visit expected)
+    {
+        var petId = pet.Id;
+        var visitId = expected.Id ?? throw new InvalidOperationException("Created visit carries no id.");
+
+        pet.Visits.Should().NotBeNull($"pet {petId}'s details must carry a visits field")
+            .And.ContainSingle(v => v.Id == visitId,
+                $"pet {petId}'s visit history must still show visit {visitId}");
+
+        var recorded = pet.Visits!.Single(v => v.Id == visitId);
+        recorded.Description.Should().Be(expected.Description, $"visit {visitId}'s description must be unchanged after pet {petId}'s update");
+        recorded.Date.Should().Be(expected.Date, $"visit {visitId}'s date must be unchanged after pet {petId}'s update");
+    }
 }

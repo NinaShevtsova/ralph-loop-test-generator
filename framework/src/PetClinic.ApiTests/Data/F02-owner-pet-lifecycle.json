@@ -50,5 +50,22 @@
       "name": "Pet",
       "birthDate": "2018-11-22"
     }
+  },
+  "AC-F02-05": {
+    "owner": {
+      "firstName": "Petro",
+      "lastName": "Tkachenko",
+      "address": "9 Kyivska Street",
+      "city": "Sumy",
+      "telephone": "0961234567"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2016-04-18"
+    },
+    "visit": {
+      "description": "Annual checkup qwerty",
+      "date": "2026-03-10"
+    }
   }
 }

@@ -31,8 +31,8 @@
 | AC-F02-01 | F-02 | an added pet is visible in the owner details and in its own details with the same data | done |
 | AC-F02-02 | F-02 | an added pet appears in the clinic-wide pets list | done |
 | AC-F02-03 | F-02 | a rename in the pet details is visible in the owner details | done |
-| AC-F02-04 | F-02 | a rename through the owner details is visible in the pet details | review |
-| AC-F02-05 | F-02 | editing a pet's data does not wipe the visit history | todo |
+| AC-F02-04 | F-02 | a rename through the owner details is visible in the pet details | done |
+| AC-F02-05 | F-02 | editing a pet's data does not wipe the visit history | review |
 | AC-F02-06 | F-02 | deleting one pet does not affect the owner's second pet | todo |
 | AC-F02-07 | F-02 | a deleted pet cannot be opened in its own details or from the owner details | todo |
 | AC-F02-08 | F-02 | a pet cannot be opened through another owner's details | todo |
