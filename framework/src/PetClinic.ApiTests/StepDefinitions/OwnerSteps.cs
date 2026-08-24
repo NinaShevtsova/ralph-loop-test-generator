@@ -179,6 +179,33 @@ public sealed class OwnerSteps
         _state.Tracker.TrackPet(created.Id ?? throw new InvalidOperationException("Created pet carries no id."));
     }
 
+    // AC-F02-06 step 2: a second pet added to the same owner, through the same nested route as "a
+    // pet is added to the owner" but under its own request/response keys — the first pet's keys
+    // (OwnerAddPetRequest/Response) must still hold the first pet afterwards, since step 4 deletes
+    // it by that id and steps 3/5 compare the owner's nested pets against it.
+    [When("a second pet is added to the owner")]
+    public async Task ASecondPetIsAddedToTheOwner()
+    {
+        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id to add a pet to.");
+        var data = _data.For<PetCase>();
+        var petType = _state.CreatedPetType;
+
+        var pet = new Pet
+        {
+            Name = UniqueData.PetName(data.Name),
+            BirthDate = data.BirthDate,
+            Type = new PetType { Id = petType.Id, Name = petType.Name },
+        };
+
+        var response = _check.Expect(await _owners.AddPet(ownerId, pet), HttpStatusCode.Created);
+        var created = response.Body ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+
+        _state.CreatedPet = created;
+        _state.Set("OwnerAddSecondPetRequest", pet);
+        _state.Set("OwnerAddSecondPetResponse", response);
+        _state.Tracker.TrackPet(created.Id ?? throw new InvalidOperationException("Created pet carries no id."));
+    }
+
     // Deliberately does NOT overwrite CreatedPet: US-02 asks that the nested and the direct
     // representation of the same pet agree, and a later assertion step needs both readings on hand to
     // compare, not one collapsed into the other. ScenarioState is addressed by key (S9's DoD) for

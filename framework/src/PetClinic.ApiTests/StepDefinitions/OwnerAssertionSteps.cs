@@ -268,4 +268,54 @@ public sealed class OwnerAssertionSteps
         var pet = owner.Pets!.Single(p => p.Id == petId);
         pet.Name.Should().Be(expectedName, $"owner {ownerId}'s pet {petId} must show the new name, not the one it was created with");
     }
+
+    // AC-F02-06 step 3: both pets this AC adds must show up as two distinct entries, each keeping
+    // its own name — compared against OwnerAddPetResponse/OwnerAddSecondPetResponse (what each POST
+    // actually returned), not against _state.CreatedPet, which by this point holds only the second
+    // pet.
+    [Then("the owner details show both pets with their own names")]
+    public void TheOwnerDetailsShowBothPetsWithTheirOwnNames()
+    {
+        var owner = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
+        var first = _state.Get<ApiResponse<Pet>>("OwnerAddPetResponse").Body
+            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var second = _state.Get<ApiResponse<Pet>>("OwnerAddSecondPetResponse").Body
+            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var ownerId = owner.Id;
+
+        owner.Pets.Should().NotBeNull($"owner {ownerId}'s response must carry a pets field")
+            .And.HaveCount(2, $"owner {ownerId} must show exactly the two pets that were added");
+
+        owner.Pets.Should().ContainSingle(p => p.Id == first.Id,
+            $"owner {ownerId}'s details must show the first pet {first.Id}");
+        owner.Pets.Should().ContainSingle(p => p.Id == second.Id,
+            $"owner {ownerId}'s details must show the second pet {second.Id}");
+
+        var firstNested = owner.Pets!.Single(p => p.Id == first.Id);
+        var secondNested = owner.Pets!.Single(p => p.Id == second.Id);
+
+        firstNested.Name.Should().Be(first.Name, $"owner {ownerId}'s first pet {first.Id} must keep its own name");
+        secondNested.Name.Should().Be(second.Name, $"owner {ownerId}'s second pet {second.Id} must keep its own name, not overwritten by the first");
+    }
+
+    // AC-F02-06 step 5: after the first pet is deleted, the owner's pets array must contain exactly
+    // the second pet, with the name it was created with — deleting one sibling must not touch the
+    // other's data, only remove it from the list.
+    [Then("the owner details show only the second pet with its original name")]
+    public void TheOwnerDetailsShowOnlyTheSecondPetWithItsOriginalName()
+    {
+        var owner = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
+        var second = _state.Get<ApiResponse<Pet>>("OwnerAddSecondPetResponse").Body
+            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var ownerId = owner.Id;
+
+        owner.Pets.Should().NotBeNull($"owner {ownerId}'s response must carry a pets field")
+            .And.ContainSingle(p => p.Id == second.Id,
+                $"owner {ownerId}'s details must show exactly the second pet {second.Id} after the first was deleted");
+
+        var pet = owner.Pets!.Single(p => p.Id == second.Id);
+        pet.Name.Should().Be(second.Name, $"owner {ownerId}'s second pet {second.Id} must keep its original name after the first pet was deleted");
+    }
 }

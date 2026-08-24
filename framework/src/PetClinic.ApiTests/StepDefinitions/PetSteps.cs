@@ -87,6 +87,18 @@ public sealed class PetSteps
         _state.Set("PetDeleteResponse", response);
     }
 
+    // AC-F02-06 step 4: deletes specifically the first of the two pets this AC creates, by the id
+    // OwnerAddPetResponse recorded at creation — not _state.CreatedPet, which by this point in the
+    // scenario holds the second pet ("a second pet is added to the owner" already replaced it).
+    [When("the first pet is deleted")]
+    public async Task TheFirstPetIsDeleted()
+    {
+        var firstPetId = _state.Get<ApiResponse<Pet>>("OwnerAddPetResponse").Body?.Id
+            ?? throw new InvalidOperationException("First pet carries no id to delete.");
+        var response = _check.Expect(await _pets.Delete(firstPetId), HttpStatusCode.NoContent);
+        _state.Set("PetDeleteFirstResponse", response);
+    }
+
     // AC-F01-04 step 4: a GET on a pet removed by its owner's deregistration cascade, not by "the
     // pet is deleted". Expected code is the opposite of "the pet details are opened" (404, not
     // 200), so this is its own step rather than a reworded one.

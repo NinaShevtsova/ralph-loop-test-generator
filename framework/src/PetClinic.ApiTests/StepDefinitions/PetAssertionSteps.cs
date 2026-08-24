@@ -212,6 +212,52 @@ public sealed class PetAssertionSteps
         AssertVisitUnaffected(fetched, _state.CreatedVisit);
     }
 
+    // AC-F02-06 step 2: the AC's own extra check beyond the standard creation assertions — that
+    // adding a second pet to the same owner returns a different id than the first, so the second
+    // POST does not silently reuse or overwrite the first pet's record.
+    [Then("the second pet has its own id, distinct from the first pet")]
+    public void TheSecondPetHasItsOwnIdDistinctFromTheFirstPet()
+    {
+        var first = _state.Get<ApiResponse<Pet>>("OwnerAddPetResponse").Body
+            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var second = _state.Get<ApiResponse<Pet>>("OwnerAddSecondPetResponse").Body
+            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+
+        second.Id.Should().NotBeNull("adding the second pet must return the id the API assigned it");
+        second.Id.Should().NotBe(first.Id, $"the second pet must get its own id, distinct from the first pet {first.Id}");
+    }
+
+    // AC-F02-06 step 4: EnsureStatus inside "the first pet is deleted" already covers "code 204";
+    // this is the other half §7 states for every DELETE — the same "empty body" check this file
+    // already applies to updates, now for a delete response.
+    [Then("the pet deletion returns no pet data")]
+    public void ThePetDeletionReturnsNoPetData()
+    {
+        var first = _state.Get<ApiResponse<Pet>>("OwnerAddPetResponse").Body
+            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var response = _state.Get<ApiResponse<object?>>("PetDeleteFirstResponse");
+
+        response.RawContent.Should().BeNullOrEmpty($"deleting pet {first.Id} must answer with an empty body (§7)");
+    }
+
+    // AC-F02-06 step 6: the second pet's own details, read directly after its sibling was deleted,
+    // must still show exactly what "a second pet is added to the owner" recorded at creation —
+    // deleting the first pet must affect neither the second pet's fields nor its link to the owner.
+    [Then("the second pet's details are unchanged after the first pet was deleted")]
+    public void TheSecondPetsDetailsAreUnchangedAfterTheFirstPetWasDeleted()
+    {
+        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
+        var created = _state.Get<ApiResponse<Pet>>("OwnerAddSecondPetResponse").Body
+            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var petId = fetched.Id;
+
+        fetched.Name.Should().Be(created.Name, $"pet {petId}'s name must be unchanged after its sibling was deleted");
+        fetched.BirthDate.Should().Be(created.BirthDate, $"pet {petId}'s birth date must be unchanged after its sibling was deleted");
+        fetched.Type.Id.Should().Be(created.Type.Id, $"pet {petId}'s type must be unchanged after its sibling was deleted");
+        fetched.OwnerId.Should().Be(created.OwnerId, $"pet {petId} must still be linked to the same owner after its sibling was deleted");
+    }
+
     // Shared by both AC-F02-05 Then steps above: the visit's id, description and date must still be
     // the ones "a visit is recorded for the pet" created, whether read right after recording it or
     // again after the pet's name was changed by a PUT that never submitted a visits field.

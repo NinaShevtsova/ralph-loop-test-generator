@@ -67,5 +67,18 @@
       "description": "Annual checkup qwerty",
       "date": "2026-03-10"
     }
+  },
+  "AC-F02-06": {
+    "owner": {
+      "firstName": "Olena",
+      "lastName": "Savchenko",
+      "address": "21 Sonyachna Street",
+      "city": "Vinnytsia",
+      "telephone": "0981234567"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2017-09-12"
+    }
   }
 }

@@ -68,3 +68,20 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     Then the pet details show the new name and an unaffected visit history
     When the visit details are opened
     Then the visit still shows the description and date it was recorded with
+
+  @AC-F02-06 @US-02 @US-04
+  Scenario: AC-F02-06 deleting one pet does not affect the owner's second pet
+    Given an owner is registered
+    And the pet types directory is requested
+    When a pet is added to the owner
+    Then the created pet has an assigned id, the submitted values and a link to the owner
+    When a second pet is added to the owner
+    Then the second pet has its own id, distinct from the first pet
+    When the owner details are opened
+    Then the owner details show both pets with their own names
+    When the first pet is deleted
+    Then the pet deletion returns no pet data
+    When the owner details are opened
+    Then the owner details show only the second pet with its original name
+    When the pet details are opened
+    Then the second pet's details are unchanged after the first pet was deleted
