@@ -260,3 +260,68 @@ test('failures whose names could not be read are their own outcome, not a miss',
   assert.equal(grade.unattributed, true);
   assert.equal(grade.ok, false);
 });
+
+// ── proves: contracts a set of failed ids cannot express ────────────────────
+
+// The shape `dotnet test` prints when POST /owners answers 500. Taken from a real run of the
+// role-split experiment, with the codes changed to what this mutation produces.
+const ROLE_OUTPUT = [
+  '  Failed AC_F01_01ARegisteredOwnerIsVisibleWithTheSubmittedValues [1 s]',
+  '   Expected response.StatusCode to be HttpStatusCode.Created {value: 201} because the contract',
+  '   answers this here. POST http://localhost:9966/petclinic/api/owners → 500 InternalServerError.',
+  '   Body: {"error":"mutation-control"}, but found HttpStatusCode.InternalServerError.',
+  '  Failed AC_F01_02UpdatedOwnerContactsAreVisible [72 ms]',
+  '   System.InvalidOperationException : Expected HTTP 201 Created. Got POST',
+  '   http://localhost:9966/petclinic/api/owners → 500 InternalServerError. Body: {}',
+  '  Failed AC_F01_03ADeregisteredOwnerIsGone [33 ms]',
+  '  Failed AC_F01_04DeregisteringAnOwnerRemovesTheirPet [215 ms]',
+  'Failed!  - Failed:     5, Passed:    12, Total:    17',
+].join('\n');
+
+test('proves turns "the right tests went red" into "and for the stated reason"', () => {
+  // The gap this closes, measured: with the role split stripped from all ten call sites of
+  // OwnerSteps.cs, the build, three gates and all 17 tests stayed green. `expect` alone would have
+  // scored that as a pass here too, because the same ids go red either way.
+  const mutation = MUTATIONS['reject-owner-creation'];
+  const grade = gradeMutation(mutation, { ...parseFailures(ROLE_OUTPUT), output: ROLE_OUTPUT });
+  assert.deepEqual(grade.unproven, [], JSON.stringify(grade));
+  assert.equal(grade.ok, true, JSON.stringify(grade));
+});
+
+test('proves reports the contract as unproven when the roles are NOT told apart', () => {
+  // The same ids red, the same counts — and every failure an InvalidOperationException, which is what
+  // a framework without the role split produces. The control must refuse to call this a proof.
+  const flattened = ROLE_OUTPUT
+    .split('\n')
+    .map((line) => line.replace(/Expected response.Should.*/, ''))
+    .join('\n')
+    .replace('Expected response.StatusCode to be HttpStatusCode.Created {value: 201} because the contract', 'System.InvalidOperationException : Expected HTTP 201 Created.');
+  const grade = gradeMutation(MUTATIONS['reject-owner-creation'], { ...parseFailures(flattened), output: flattened });
+  assert.equal(grade.ok, false);
+  assert.deepEqual(grade.missing, [], 'the right tests DID go red — that is exactly the trap');
+  assert.match(grade.unproven.join(' '), /FAILURE/);
+});
+
+test('proves is unproven, never satisfied, when the output was not captured', () => {
+  // Fail closed. A contract nobody could look at has not been demonstrated, and silently passing it
+  // is the one trade this whole file exists to refuse.
+  const grade = gradeMutation(MUTATIONS['reject-owner-creation'], parseFailures(ROLE_OUTPUT));
+  assert.equal(grade.ok, false);
+  assert.equal(grade.unproven.length, 3);
+});
+
+test('a mutation with no proves block is graded exactly as before', () => {
+  // The four original mutations ask only which ids went red, and must keep working unchanged.
+  const out = '  Failed AC_F02_01AnAddedPetIsVisible\nFailed!  - Failed:     7, Passed: 16, Total:    23';
+  const grade = gradeMutation(MUTATIONS['drop-pet-name'], { ...parseFailures(out), output: out });
+  assert.deepEqual(grade.unproven, []);
+  assert.equal(grade.ok, true);
+});
+
+test('every proves pattern is a regex, so a typo cannot read as an empty contract', () => {
+  for (const [name, mutation] of Object.entries(MUTATIONS)) {
+    for (const [label, pattern] of Object.entries(mutation.proves ?? {})) {
+      assert.ok(pattern instanceof RegExp, `${name}: "${label}" is not a RegExp`);
+    }
+  }
+});
