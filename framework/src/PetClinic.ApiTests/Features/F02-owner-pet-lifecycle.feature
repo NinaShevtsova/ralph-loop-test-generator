@@ -85,3 +85,19 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     Then the owner details show only the second pet with its original name
     When the pet details are opened
     Then the second pet's details are unchanged after the first pet was deleted
+
+  @AC-F02-07 @US-01 @US-03 @US-04
+  Scenario: AC-F02-07 a deleted pet cannot be opened in its own details or from the owner details
+    Given an owner is registered
+    And the pet types directory is requested
+    And a pet is added to the owner
+    When the pet is deleted
+    Then the pet deletion returns no pet data
+    When an attempt is made to open the pet details
+    Then the pet details are no longer available
+    When an attempt is made to open the pet from the owner details
+    Then the pet is no longer available from the owner details
+    When the owner details are opened
+    Then the owner details show the submitted values and match the registration response
+    When the pets directory is requested
+    Then the pet is missing from the pets list

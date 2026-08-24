@@ -80,5 +80,18 @@
       "name": "Pet",
       "birthDate": "2017-09-12"
     }
+  },
+  "AC-F02-07": {
+    "owner": {
+      "firstName": "Bohdan",
+      "lastName": "Lysenko",
+      "address": "14 Nezalezhnosti Street",
+      "city": "Cherkasy",
+      "telephone": "0973456789"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2019-08-01"
+    }
   }
 }

@@ -212,6 +212,34 @@ public sealed class PetAssertionSteps
         AssertVisitUnaffected(fetched, _state.CreatedVisit);
     }
 
+    // AC-F02-07 step 1: EnsureStatus inside "the pet is deleted" already covers "code 204"; this is
+    // the other half §7 states for every DELETE -- the same "empty body" check this file already
+    // applies to "the first pet's deletion returns no pet data", now for the generic delete
+    // (PetDeleteResponse) that this AC's single-pet scenario uses instead.
+    [Then("the pet deletion returns no pet data")]
+    public void ThePetDeletionReturnsNoPetData()
+    {
+        var petId = _state.CreatedPet.Id;
+        var response = _state.Get<ApiResponse<object?>>("PetDeleteResponse");
+
+        response.RawContent.Should().BeNullOrEmpty($"deleting pet {petId} must answer with an empty body (§7)");
+    }
+
+    // AC-F02-07 step 3: the code (404) is asserted by EnsureStatus inside "an attempt is made to
+    // open the pet from the owner details"; this checks the other half §7 states for every 404 --
+    // no body to carry. Mirrors "the pet details are no longer available" (the direct route), now
+    // for the owner-nested one, which stores its response under its own key
+    // (OwnerGetPetAfterDeleteResponse).
+    [Then("the pet is no longer available from the owner details")]
+    public void ThePetIsNoLongerAvailableFromTheOwnerDetails()
+    {
+        var petId = _state.CreatedPet.Id;
+        var response = _state.Get<ApiResponse<Pet>>("OwnerGetPetAfterDeleteResponse");
+
+        response.RawContent.Should().BeNullOrEmpty(
+            $"opening pet {petId} through its owner must return no body once the pet has been deleted (§7)");
+    }
+
     // AC-F02-06 step 2: the AC's own extra check beyond the standard creation assertions — that
     // adding a second pet to the same owner returns a different id than the first, so the second
     // POST does not silently reuse or overwrite the first pet's record.

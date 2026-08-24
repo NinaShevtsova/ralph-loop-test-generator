@@ -220,6 +220,20 @@ public sealed class OwnerSteps
         _state.Set("OwnerGetPetResponse", response);
     }
 
+    // AC-F02-07 step 3: the nested-route counterpart of "an attempt is made to open the pet
+    // details" (PetSteps.cs) -- same deleted pet, but through GET /owners/{ownerId}/pets/{petId}
+    // rather than GET /pets/{petId}, so it needs its own 404 expectation instead of reusing "the
+    // pet is opened from the owner details", which asserts 200.
+    [When("an attempt is made to open the pet from the owner details")]
+    public async Task AnAttemptIsMadeToOpenThePetFromTheOwnerDetails()
+    {
+        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id.");
+        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id.");
+
+        var response = _check.Expect(await _owners.GetPet(ownerId, petId), HttpStatusCode.NotFound);
+        _state.Set("OwnerGetPetAfterDeleteResponse", response);
+    }
+
     // §7's second pet-update route. The body carries only name/birthDate/type (never id, ownerId or
     // visits — Pet.Visits is nullable and omitted-when-null, so leaving `updated.Visits` unset keeps
     // it off the wire): Type is copied from the pet's current state rather than re-resolved, since
