@@ -86,11 +86,15 @@ public sealed class OwnerAssertionSteps
     // AC's other half -- "the response body is empty" -- which §7 states for every PUT and which
     // was otherwise never checked, since OwnerUpdateResponse was written to ScenarioState but never
     // read back by any step.
-    [Then("the owner update returns no response body")]
-    public void TheOwnerUpdateReturnsNoResponseBody()
+    [Then("the owner update returns no owner data")]
+    public void TheOwnerUpdateReturnsNoOwnerData()
     {
+        var registered = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
+            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
         var response = _state.Get<ApiResponse<object?>>("OwnerUpdateResponse");
-        response.RawContent.Should().BeNullOrEmpty("a PUT must answer with an empty body (§7)");
+        var ownerId = registered.Id;
+
+        response.RawContent.Should().BeNullOrEmpty($"owner {ownerId}'s update must answer with an empty body (§7)");
     }
 
     // AC-F01-02 step 2: the new city/telephone are compared against OwnerUpdateRequest -- the exact
