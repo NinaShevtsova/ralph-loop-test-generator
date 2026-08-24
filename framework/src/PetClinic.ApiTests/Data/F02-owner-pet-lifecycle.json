@@ -1,0 +1,15 @@
+{
+  "AC-F02-01": {
+    "owner": {
+      "firstName": "Taras",
+      "lastName": "Kravchenko",
+      "address": "5 Franka Street",
+      "city": "Chernihiv",
+      "telephone": "0931234567"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2020-05-14"
+    }
+  }
+}

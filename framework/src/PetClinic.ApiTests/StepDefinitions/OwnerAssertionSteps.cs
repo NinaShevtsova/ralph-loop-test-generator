@@ -225,4 +225,27 @@ public sealed class OwnerAssertionSteps
             .And.ContainSingle(v => v.Id == visitId,
                 $"pet {petId}'s entry in the owner details must show the visit {visitId} that was just recorded");
     }
+
+    // AC-F02-01 step 3: the owner details' nested pet is compared against OwnerAddPetResponse (the
+    // POST's own body) rather than the base PetCase, the same "compare against what was submitted"
+    // rule this file already applies to owner fields, and "exactly one" per §10.4.
+    [Then("the owner details show the added pet with the submitted values")]
+    public void TheOwnerDetailsShowTheAddedPetWithTheSubmittedValues()
+    {
+        var owner = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
+        var addedPet = _state.Get<ApiResponse<Pet>>("OwnerAddPetResponse").Body
+            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var petId = addedPet.Id ?? throw new InvalidOperationException("Created pet carries no id.");
+        var ownerId = owner.Id;
+
+        owner.Pets.Should().NotBeNull($"owner {ownerId}'s response must carry a pets field")
+            .And.ContainSingle(p => p.Id == petId,
+                $"owner {ownerId}'s details must show the pet {petId} that was just added");
+
+        var pet = owner.Pets!.Single(p => p.Id == petId);
+        pet.Name.Should().Be(addedPet.Name, $"owner {ownerId}'s pet {petId} must show the submitted name");
+        pet.BirthDate.Should().Be(addedPet.BirthDate, $"owner {ownerId}'s pet {petId} must show the submitted birth date");
+        pet.Type.Id.Should().Be(addedPet.Type.Id, $"owner {ownerId}'s pet {petId} must show the type from the directory");
+    }
 }

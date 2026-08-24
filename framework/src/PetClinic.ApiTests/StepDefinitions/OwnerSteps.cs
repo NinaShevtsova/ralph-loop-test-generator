@@ -174,6 +174,7 @@ public sealed class OwnerSteps
         var created = response.Body ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
 
         _state.CreatedPet = created;
+        _state.Set("OwnerAddPetRequest", pet);
         _state.Set("OwnerAddPetResponse", response);
         _state.Tracker.TrackPet(created.Id ?? throw new InvalidOperationException("Created pet carries no id."));
     }
