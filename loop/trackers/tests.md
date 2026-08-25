@@ -42,8 +42,8 @@
 | AC-F03-02 | F-03 | a visit from the clinic-wide log lands in the history of the same pet | done |
 | AC-F03-03 | F-03 | a visit can be scheduled for a future date | done |
 | AC-F03-04 | F-03 | a corrected visit description is visible in the pet's history | done |
-| AC-F03-05 | F-03 | a cancelled visit disappears from the history and the log, and cancelling again gives 404 | review |
-| AC-F03-06 | F-03 | editing one visit does not affect the pet's remaining visits | todo |
+| AC-F03-05 | F-03 | a cancelled visit disappears from the history and the log, and cancelling again gives 404 | done |
+| AC-F03-06 | F-03 | editing one visit does not affect the pet's remaining visits | done |
 
 **Total:** 20 acceptance criteria — 4 in F-01, 10 in F-02, 6 in F-03.
 
