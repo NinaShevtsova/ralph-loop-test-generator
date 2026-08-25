@@ -38,7 +38,7 @@
 | AC-F02-08 | F-02 | a pet cannot be opened through another owner's details | done |
 | AC-F02-09 | F-02 | a pet cannot be added to a non-existent owner | done |
 | AC-F02-10 | F-02 | deleting a pet removes the visits but preserves the owner and the pet types directory | done |
-| AC-F03-01 | F-03 | a visit from the pet details is visible in the pet's history, in the owner details and in the log | todo |
+| AC-F03-01 | F-03 | a visit from the pet details is visible in the pet's history, in the owner details and in the log | review |
 | AC-F03-02 | F-03 | a visit from the clinic-wide log lands in the history of the same pet | todo |
 | AC-F03-03 | F-03 | a visit can be scheduled for a future date | todo |
 | AC-F03-04 | F-03 | a corrected visit description is visible in the pet's history | todo |

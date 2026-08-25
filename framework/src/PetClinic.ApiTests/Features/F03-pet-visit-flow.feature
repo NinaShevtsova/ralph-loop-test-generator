@@ -6,3 +6,19 @@ Feature: F-03 Pet visit: recording the entry and the visit history
   the request body). A recorded visit is visible in three places: in the pet's visit history, in the
   owner details (inside their pet) and in the clinic's visits log. The flow verifies that both ways
   create equivalent records and that the visit is displayed identically everywhere.
+
+  @AC-F03-01 @US-05 @US-02
+  Scenario: AC-F03-01 a visit from the pet details is visible in the pet's history, in the owner details and in the log
+    Given an owner is registered
+    And the pet types directory is requested
+    And a pet is added to the owner
+    When a visit is recorded for the pet
+    Then the created visit has an assigned id, the submitted values and a link to the pet
+    When the visit details are opened
+    Then the visit still shows the description and date it was recorded with
+    When the pet details are opened
+    Then the pet details show the visit that was recorded for it
+    When the owner details are opened
+    Then the owner details show the pet with its recorded visit
+    When the visits log is requested
+    Then the visit appears exactly once in the visits list with the pet's id

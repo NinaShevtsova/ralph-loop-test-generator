@@ -19,6 +19,43 @@ public sealed class VisitAssertionSteps
         _state = state;
     }
 
+    // AC-F03-01 step 1: compared against VisitAddRequest -- the exact Visit "a visit is recorded for
+    // the pet" sent on the wire -- not against the base VisitCase, the same "compare against what was
+    // submitted" rule PetAssertionSteps applies to the nested pet-creation route, now for the
+    // nested visit-creation route.
+    [Then("the created visit has an assigned id, the submitted values and a link to the pet")]
+    public void TheCreatedVisitHasAnAssignedIdTheSubmittedValuesAndALinkToThePet()
+    {
+        var visit = _state.Get<ApiResponse<Visit>>("VisitAddResponse").Body
+            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets/{petId}/visits answered 201 with no body.");
+        var submitted = _state.Get<Visit>("VisitAddRequest");
+        var petId = _state.CreatedPet.Id;
+        var visitId = visit.Id;
+
+        visit.Id.Should().NotBeNull($"recording a visit for pet {petId} must return the id the API assigned it");
+        visit.PetId.Should().Be(petId, $"visit {visitId} must carry a link back to pet {petId}");
+        visit.Description.Should().Be(submitted.Description, $"visit {visitId} must keep the description that was submitted");
+        visit.Date.Should().Be(submitted.Date, $"visit {visitId} must keep the date that was submitted");
+    }
+
+    // AC-F03-01 step 5: "exactly one" per §10.4, compared against the pet's id -- the same
+    // "compare against the submitted link" rule PetAssertionSteps applies to the clinic-wide pets
+    // list, now for the clinic-wide visits log.
+    [Then("the visit appears exactly once in the visits list with the pet's id")]
+    public void TheVisitAppearsExactlyOnceInTheVisitsListWithThePetsId()
+    {
+        var visitId = _state.CreatedVisit.Id ?? throw new InvalidOperationException("Created visit carries no id.");
+        var petId = _state.CreatedPet.Id;
+        var log = _state.Get<ApiResponse<List<Visit>>>("VisitLogResponse").Body
+            ?? throw new InvalidOperationException("GET /visits answered 200 with no body.");
+
+        log.Should().ContainSingle(v => v.Id == visitId,
+            $"visit {visitId} must appear exactly once in the clinic-wide visits log");
+
+        var listed = log.Single(v => v.Id == visitId);
+        listed.PetId.Should().Be(petId, $"visit {visitId}'s entry in the visits log must link back to pet {petId}");
+    }
+
     // AC-F01-04 step 5: the code (404) is asserted by EnsureStatus inside "an attempt is made to
     // open the visit details"; this checks the other half §7 states for every 404 -- no body to
     // carry.

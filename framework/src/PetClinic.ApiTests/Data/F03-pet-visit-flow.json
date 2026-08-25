@@ -1,0 +1,19 @@
+{
+  "AC-F03-01": {
+    "owner": {
+      "firstName": "Anna",
+      "lastName": "Petliura",
+      "address": "12 Shevchenka Street",
+      "city": "Lviv",
+      "telephone": "0501234567"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2020-05-14"
+    },
+    "visit": {
+      "description": "Rabies shot qwerty",
+      "date": "2026-07-01"
+    }
+  }
+}
