@@ -100,7 +100,7 @@ public sealed class OwnerSteps
     [When("the owner details are opened")]
     public async Task TheOwnerDetailsAreOpened()
     {
-        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id to open.");
+        var ownerId = _state.CreatedOwnerId;
         var response = _check.Expect(await _owners.GetById(ownerId), HttpStatusCode.OK);
 
         _state.CreatedOwner = response.Body ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
@@ -151,7 +151,7 @@ public sealed class OwnerSteps
     [When("the owner is deleted")]
     public async Task TheOwnerIsDeleted()
     {
-        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id to delete.");
+        var ownerId = _state.CreatedOwnerId;
         var response = _check.Expect(await _owners.Delete(ownerId), HttpStatusCode.NoContent);
         _state.Set("OwnerDeleteResponse", response);
     }
@@ -163,7 +163,7 @@ public sealed class OwnerSteps
     [When("an attempt is made to open the owner details")]
     public async Task AnAttemptIsMadeToOpenTheOwnerDetails()
     {
-        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id to open.");
+        var ownerId = _state.CreatedOwnerId;
         var response = _check.Expect(await _owners.GetById(ownerId), HttpStatusCode.NotFound);
         _state.Set("OwnerGetByIdAfterDeleteResponse", response);
     }
@@ -174,7 +174,7 @@ public sealed class OwnerSteps
     [When("the owner is deleted again")]
     public async Task TheOwnerIsDeletedAgain()
     {
-        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id to delete.");
+        var ownerId = _state.CreatedOwnerId;
         var response = _check.Expect(await _owners.Delete(ownerId), HttpStatusCode.NotFound);
         _state.Set("OwnerDeleteAgainResponse", response);
     }
@@ -185,7 +185,7 @@ public sealed class OwnerSteps
     [When("a pet is added to the owner")]
     public async Task APetIsAddedToTheOwner()
     {
-        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id to add a pet to.");
+        var ownerId = _state.CreatedOwnerId;
         var data = _data.For<PetCase>();
         var petType = _state.CreatedPetType;
 
@@ -212,7 +212,7 @@ public sealed class OwnerSteps
     [When("a second pet is added to the owner")]
     public async Task ASecondPetIsAddedToTheOwner()
     {
-        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id to add a pet to.");
+        var ownerId = _state.CreatedOwnerId;
         var data = _data.For<PetCase>();
         var petType = _state.CreatedPetType;
 
@@ -239,8 +239,8 @@ public sealed class OwnerSteps
     [When("the pet is opened from the owner details")]
     public async Task ThePetIsOpenedFromTheOwnerDetails()
     {
-        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id.");
-        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id.");
+        var ownerId = _state.CreatedOwnerId;
+        var petId = _state.CreatedPetId;
 
         var response = _check.Expect(await _owners.GetPet(ownerId, petId), HttpStatusCode.OK);
         _state.Set("OwnerGetPetResponse", response);
@@ -253,8 +253,8 @@ public sealed class OwnerSteps
     [When("an attempt is made to open the pet from the owner details")]
     public async Task AnAttemptIsMadeToOpenThePetFromTheOwnerDetails()
     {
-        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id.");
-        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id.");
+        var ownerId = _state.CreatedOwnerId;
+        var petId = _state.CreatedPetId;
 
         var response = _check.Expect(await _owners.GetPet(ownerId, petId), HttpStatusCode.NotFound);
         _state.Set("OwnerGetPetAfterDeleteResponse", response);
@@ -292,7 +292,7 @@ public sealed class OwnerSteps
     public async Task AnAttemptIsMadeToOpenThePetFromTheSecondOwnersDetails()
     {
         var secondOwnerId = _state.Get<Owner>("SecondOwner").Id ?? throw new InvalidOperationException("Second owner has no id.");
-        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id.");
+        var petId = _state.CreatedPetId;
 
         var response = _check.Expect(await _owners.GetPet(secondOwnerId, petId), HttpStatusCode.NotFound);
         _state.Set("OwnerGetPetFromSecondOwnerResponse", response);
@@ -305,7 +305,7 @@ public sealed class OwnerSteps
     [When("an attempt is made to add a pet to the deleted owner")]
     public async Task AnAttemptIsMadeToAddAPetToTheDeletedOwner()
     {
-        var deletedOwnerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id.");
+        var deletedOwnerId = _state.CreatedOwnerId;
         var data = _data.For<PetCase>();
         var petType = _state.CreatedPetType;
 
@@ -330,7 +330,7 @@ public sealed class OwnerSteps
     [When("the pet is updated through the owner")]
     public async Task ThePetIsUpdatedThroughTheOwner()
     {
-        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id.");
+        var ownerId = _state.CreatedOwnerId;
         var existing = _state.CreatedPet;
         var petId = existing.Id ?? throw new InvalidOperationException("Pet has no id to update.");
         var data = _data.For<PetCase>();

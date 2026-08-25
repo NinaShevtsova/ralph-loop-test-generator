@@ -26,8 +26,7 @@ public sealed class PetAssertionSteps
     [Then("the created pet has an assigned id, the submitted values and a link to the owner")]
     public void TheCreatedPetHasAnAssignedIdTheSubmittedValuesAndALinkToTheOwner()
     {
-        var pet = _state.Get<ApiResponse<Pet>>("OwnerAddPetResponse").Body
-            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var pet = _state.Body<Pet>("OwnerAddPetResponse");
         var submitted = _state.Get<Pet>("OwnerAddPetRequest");
         var ownerId = _state.CreatedOwner.Id;
         var petId = pet.Id;
@@ -56,9 +55,8 @@ public sealed class PetAssertionSteps
     [Then("the pet is missing from the pets list")]
     public void ThePetIsMissingFromThePetsList()
     {
-        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Created pet carries no id.");
-        var directory = _state.Get<ApiResponse<List<Pet>>>("PetDirectoryResponse").Body
-            ?? throw new InvalidOperationException("GET /pets answered 200 with no body.");
+        var petId = _state.CreatedPetId;
+        var directory = _state.Body<List<Pet>>("PetDirectoryResponse");
 
         directory.Should().NotContain(p => p.Id == petId,
             $"pet {petId} must no longer appear in the pets list once its owner has been deregistered");
@@ -71,10 +69,8 @@ public sealed class PetAssertionSteps
     [Then("the pet details match the addition and the type from the directory")]
     public void ThePetDetailsMatchTheAdditionAndTheTypeFromTheDirectory()
     {
-        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
-        var added = _state.Get<ApiResponse<Pet>>("OwnerAddPetResponse").Body
-            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var fetched = _state.Body<Pet>("PetGetByIdResponse");
+        var added = _state.Body<Pet>("OwnerAddPetResponse");
         var directoryType = _state.Get<ApiResponse<List<PetType>>>("PetTypeDirectoryResponse").Body?.FirstOrDefault()
             ?? throw new InvalidOperationException("GET /pettypes answered 200 with no body.");
         var petId = fetched.Id;
@@ -92,10 +88,8 @@ public sealed class PetAssertionSteps
     [Then("the pet opened from the owner details matches the pet details in every field")]
     public void ThePetOpenedFromTheOwnerDetailsMatchesThePetDetailsInEveryField()
     {
-        var direct = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
-        var nested = _state.Get<ApiResponse<Pet>>("OwnerGetPetResponse").Body
-            ?? throw new InvalidOperationException("GET /owners/{ownerId}/pets/{petId} answered 200 with no body.");
+        var direct = _state.Body<Pet>("PetGetByIdResponse");
+        var nested = _state.Body<Pet>("OwnerGetPetResponse");
 
         nested.Should().BeEquivalentTo(direct,
             $"opening pet {direct.Id} through its owner must return exactly what opening it directly already returned");
@@ -108,11 +102,9 @@ public sealed class PetAssertionSteps
     [Then("the pet appears exactly once in the pets list with the submitted values")]
     public void ThePetAppearsExactlyOnceInThePetsListWithTheSubmittedValues()
     {
-        var added = _state.Get<ApiResponse<Pet>>("OwnerAddPetResponse").Body
-            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var added = _state.Body<Pet>("OwnerAddPetResponse");
         var petId = added.Id ?? throw new InvalidOperationException("Created pet carries no id.");
-        var directory = _state.Get<ApiResponse<List<Pet>>>("PetDirectoryResponse").Body
-            ?? throw new InvalidOperationException("GET /pets answered 200 with no body.");
+        var directory = _state.Body<List<Pet>>("PetDirectoryResponse");
 
         directory.Should().ContainSingle(p => p.Id == petId,
             $"pet {petId} must appear exactly once in the clinic-wide pets list after being added");
@@ -142,8 +134,7 @@ public sealed class PetAssertionSteps
     [Then("the pet opened from the owner details carries the new name")]
     public void ThePetOpenedFromTheOwnerDetailsCarriesTheNewName()
     {
-        var nested = _state.Get<ApiResponse<Pet>>("OwnerGetPetResponse").Body
-            ?? throw new InvalidOperationException("GET /owners/{ownerId}/pets/{petId} answered 200 with no body.");
+        var nested = _state.Body<Pet>("OwnerGetPetResponse");
         var expectedName = _state.CreatedPet.Name;
         var petId = _state.CreatedPet.Id;
 
@@ -171,8 +162,7 @@ public sealed class PetAssertionSteps
     [Then("the pet details show the name that was set through the owner")]
     public void ThePetDetailsShowTheNameThatWasSetThroughTheOwner()
     {
-        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
+        var fetched = _state.Body<Pet>("PetGetByIdResponse");
         var submitted = _state.Get<Pet>("OwnerUpdatePetRequest");
         var ownerId = _state.CreatedOwner.Id;
         var petId = fetched.Id;
@@ -187,8 +177,7 @@ public sealed class PetAssertionSteps
     [Then("the pet details show the visit that was recorded for it")]
     public void ThePetDetailsShowTheVisitThatWasRecordedForIt()
     {
-        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
+        var fetched = _state.Body<Pet>("PetGetByIdResponse");
 
         AssertVisitUnaffected(fetched, _state.CreatedVisit);
     }
@@ -202,8 +191,7 @@ public sealed class PetAssertionSteps
     [Then("the pet details show the new name and an unaffected visit history")]
     public void ThePetDetailsShowTheNewNameAndAnUnaffectedVisitHistory()
     {
-        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
+        var fetched = _state.Body<Pet>("PetGetByIdResponse");
         var submitted = _state.Get<Pet>("PetUpdateRequest");
         var petId = fetched.Id;
 
@@ -246,10 +234,8 @@ public sealed class PetAssertionSteps
     [Then("the second pet has its own id, distinct from the first pet")]
     public void TheSecondPetHasItsOwnIdDistinctFromTheFirstPet()
     {
-        var first = _state.Get<ApiResponse<Pet>>("OwnerAddPetResponse").Body
-            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
-        var second = _state.Get<ApiResponse<Pet>>("OwnerAddSecondPetResponse").Body
-            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var first = _state.Body<Pet>("OwnerAddPetResponse");
+        var second = _state.Body<Pet>("OwnerAddSecondPetResponse");
 
         second.Id.Should().NotBeNull("adding the second pet must return the id the API assigned it");
         second.Id.Should().NotBe(first.Id, $"the second pet must get its own id, distinct from the first pet {first.Id}");
@@ -265,8 +251,7 @@ public sealed class PetAssertionSteps
     [Then("the first pet's deletion returns no pet data")]
     public void TheFirstPetsDeletionReturnsNoPetData()
     {
-        var first = _state.Get<ApiResponse<Pet>>("OwnerAddPetResponse").Body
-            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var first = _state.Body<Pet>("OwnerAddPetResponse");
         var response = _state.Get<ApiResponse<object?>>("PetDeleteFirstResponse");
 
         response.RawContent.Should().BeNullOrEmpty($"deleting pet {first.Id} must answer with an empty body (§7)");
@@ -278,10 +263,8 @@ public sealed class PetAssertionSteps
     [Then("the second pet's details are unchanged after the first pet was deleted")]
     public void TheSecondPetsDetailsAreUnchangedAfterTheFirstPetWasDeleted()
     {
-        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
-        var created = _state.Get<ApiResponse<Pet>>("OwnerAddSecondPetResponse").Body
-            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var fetched = _state.Body<Pet>("PetGetByIdResponse");
+        var created = _state.Body<Pet>("OwnerAddSecondPetResponse");
         var petId = fetched.Id;
 
         fetched.Name.Should().Be(created.Name, $"pet {petId}'s name must be unchanged after its sibling was deleted");
@@ -296,8 +279,7 @@ public sealed class PetAssertionSteps
     [Then("the pet opened from the owner details belongs to its own owner")]
     public void ThePetOpenedFromTheOwnerDetailsBelongsToItsOwnOwner()
     {
-        var nested = _state.Get<ApiResponse<Pet>>("OwnerGetPetResponse").Body
-            ?? throw new InvalidOperationException("GET /owners/{ownerId}/pets/{petId} answered 200 with no body.");
+        var nested = _state.Body<Pet>("OwnerGetPetResponse");
         var ownerId = _state.CreatedOwner.Id;
         var petId = _state.CreatedPet.Id;
 
@@ -339,8 +321,7 @@ public sealed class PetAssertionSteps
     public void ThePetFromTheFailedAdditionIsMissingFromThePetsList()
     {
         var attempted = _state.Get<Pet>("OwnerAddPetToDeletedOwnerRequest");
-        var directory = _state.Get<ApiResponse<List<Pet>>>("PetDirectoryResponse").Body
-            ?? throw new InvalidOperationException("GET /pets answered 200 with no body.");
+        var directory = _state.Body<List<Pet>>("PetDirectoryResponse");
 
         directory.Should().NotContain(p => p.Name == attempted.Name,
             $"pet '{attempted.Name}' must never have been created since its owner did not exist");
@@ -353,8 +334,7 @@ public sealed class PetAssertionSteps
     [Then("the pet's own details are unaffected and its visit history is empty")]
     public void ThePetsOwnDetailsAreUnaffectedAndItsVisitHistoryIsEmpty()
     {
-        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
+        var fetched = _state.Body<Pet>("PetGetByIdResponse");
         var submitted = _state.Get<Pet>("OwnerAddPetRequest");
         var petId = fetched.Id;
 

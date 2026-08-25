@@ -1,3 +1,4 @@
+using PetClinic.ApiTests.Http;
 using PetClinic.ApiTests.Models;
 
 namespace PetClinic.ApiTests.Support;
@@ -64,6 +65,45 @@ public sealed class ScenarioState
     private const string PetKey = "Pet";
     private const string PetTypeKey = "PetType";
     private const string VisitKey = "Visit";
+
+    /*
+     * The created entity's id, or a named failure -- the second shape of the same guard.
+     *
+     * `Id` is `int?` on every model, because a POST body is sent without one, so every read of an id
+     * needed `?? throw`. Written out, that was 7 copies of "Owner has no id.", 7 of "Pet has no id.",
+     * 8 of "Created pet carries no id." and so on -- four entities, four wordings each, all saying the
+     * one thing this property now says once.
+     */
+    public int CreatedOwnerId => IdOf(CreatedOwner.Id, "owner");
+
+    public int CreatedPetId => IdOf(CreatedPet.Id, "pet");
+
+    public int CreatedVisitId => IdOf(CreatedVisit.Id, "visit");
+
+    public int CreatedPetTypeId => IdOf(CreatedPetType.Id, "pet type");
+
+    private static int IdOf(int? id, string what) =>
+        id ?? throw new InvalidOperationException(
+            $"The created {what} carries no id. The API answered 201 without one, or the body did not deserialise.");
+
+    /*
+     * The stored response's body, or a named failure -- the one place that guard lives.
+     *
+     * It was written out at 63 call sites, the same three lines each time, with the message repeated
+     * verbatim up to 13 times ("POST /owners/{ownerId}/pets answered 201 with no body."). Every one of
+     * them said the same thing in a different string, so changing what a missing body reports meant
+     * 63 edits and the wording had already drifted apart.
+     *
+     * The message names the KEY rather than the route, and that is not a loss: `EnsureStatus` and
+     * `StatusCheck.Expect` already put the verb and the URL into the failure that precedes this one,
+     * so a body that is missing after a green status is a deserialisation problem, and the key is
+     * what identifies it.
+     */
+    public T Body<T>(string key) where T : class =>
+        Get<ApiResponse<T>>(key).Body
+        ?? throw new InvalidOperationException(
+            $"'{key}' was stored with a body the tests need, and it is null. " +
+            "The status was already checked, so this is a deserialisation problem, not a wrong code.");
 
     public Owner CreatedOwner
     {

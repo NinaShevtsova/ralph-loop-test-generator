@@ -26,8 +26,7 @@ public sealed class VisitAssertionSteps
     [Then("the created visit has an assigned id, the submitted values and a link to the pet")]
     public void TheCreatedVisitHasAnAssignedIdTheSubmittedValuesAndALinkToThePet()
     {
-        var visit = _state.Get<ApiResponse<Visit>>("VisitAddResponse").Body
-            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets/{petId}/visits answered 201 with no body.");
+        var visit = _state.Body<Visit>("VisitAddResponse");
         var submitted = _state.Get<Visit>("VisitAddRequest");
         var petId = _state.CreatedPet.Id;
         var visitId = visit.Id;
@@ -44,10 +43,9 @@ public sealed class VisitAssertionSteps
     [Then("the visit appears exactly once in the visits list with the pet's id")]
     public void TheVisitAppearsExactlyOnceInTheVisitsListWithThePetsId()
     {
-        var visitId = _state.CreatedVisit.Id ?? throw new InvalidOperationException("Created visit carries no id.");
+        var visitId = _state.CreatedVisitId;
         var petId = _state.CreatedPet.Id;
-        var log = _state.Get<ApiResponse<List<Visit>>>("VisitLogResponse").Body
-            ?? throw new InvalidOperationException("GET /visits answered 200 with no body.");
+        var log = _state.Body<List<Visit>>("VisitLogResponse");
 
         log.Should().ContainSingle(v => v.Id == visitId,
             $"visit {visitId} must appear exactly once in the clinic-wide visits log");
@@ -74,9 +72,8 @@ public sealed class VisitAssertionSteps
     [Then("the visit is missing from the visits list")]
     public void TheVisitIsMissingFromTheVisitsList()
     {
-        var visitId = _state.CreatedVisit.Id ?? throw new InvalidOperationException("Created visit carries no id.");
-        var log = _state.Get<ApiResponse<List<Visit>>>("VisitLogResponse").Body
-            ?? throw new InvalidOperationException("GET /visits answered 200 with no body.");
+        var visitId = _state.CreatedVisitId;
+        var log = _state.Body<List<Visit>>("VisitLogResponse");
 
         log.Should().NotContain(v => v.Id == visitId,
             $"visit {visitId} must no longer appear in the visits log once its pet has been removed");
@@ -90,8 +87,7 @@ public sealed class VisitAssertionSteps
     [Then("the visit still shows the description and date it was recorded with")]
     public void TheVisitStillShowsTheDescriptionAndDateItWasRecordedWith()
     {
-        var fetched = _state.Get<ApiResponse<Visit>>("VisitGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /visits/{visitId} answered 200 with no body.");
+        var fetched = _state.Body<Visit>("VisitGetByIdResponse");
         var submitted = _state.Get<Visit>("VisitAddRequest");
         var petId = _state.CreatedPet.Id;
         var visitId = fetched.Id;
@@ -108,10 +104,8 @@ public sealed class VisitAssertionSteps
     [Then("the visit recorded in the clinic log carries the pet's id and an id distinct from the first visit")]
     public void TheVisitRecordedInTheClinicLogCarriesThePetsIdAndAnIdDistinctFromTheFirstVisit()
     {
-        var first = _state.Get<ApiResponse<Visit>>("VisitAddResponse").Body
-            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets/{petId}/visits answered 201 with no body.");
-        var second = _state.Get<ApiResponse<Visit>>("VisitCreateResponse").Body
-            ?? throw new InvalidOperationException("POST /visits answered 201 with no body.");
+        var first = _state.Body<Visit>("VisitAddResponse");
+        var second = _state.Body<Visit>("VisitCreateResponse");
         var petId = _state.CreatedPet.Id;
 
         second.Id.Should().NotBeNull("recording a visit in the clinic log must return the id the API assigned it");
@@ -125,15 +119,12 @@ public sealed class VisitAssertionSteps
     [Then("the pet details show both visits recorded for it")]
     public void ThePetDetailsShowBothVisitsRecordedForIt()
     {
-        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
+        var fetched = _state.Body<Pet>("PetGetByIdResponse");
         var petId = fetched.Id;
 
-        var firstVisit = _state.Get<ApiResponse<Visit>>("VisitAddResponse").Body
-            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets/{petId}/visits answered 201 with no body.");
+        var firstVisit = _state.Body<Visit>("VisitAddResponse");
         var firstSubmitted = _state.Get<Visit>("VisitAddRequest");
-        var secondVisit = _state.Get<ApiResponse<Visit>>("VisitCreateResponse").Body
-            ?? throw new InvalidOperationException("POST /visits answered 201 with no body.");
+        var secondVisit = _state.Body<Visit>("VisitCreateResponse");
         var secondSubmitted = _state.Get<Visit>("VisitCreateRequest");
 
         fetched.Visits.Should().NotBeNull($"pet {petId}'s details must carry a visits field");
@@ -164,8 +155,7 @@ public sealed class VisitAssertionSteps
             ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets/{petId}/visits answered 201 with no body.");
         var secondVisitId = _state.Get<ApiResponse<Visit>>("VisitCreateResponse").Body?.Id
             ?? throw new InvalidOperationException("POST /visits answered 201 with no body.");
-        var log = _state.Get<ApiResponse<List<Visit>>>("VisitLogResponse").Body
-            ?? throw new InvalidOperationException("GET /visits answered 200 with no body.");
+        var log = _state.Body<List<Visit>>("VisitLogResponse");
 
         log.Should().ContainSingle(v => v.Id == firstVisitId,
             $"visit {firstVisitId} must appear exactly once in the clinic-wide visits log");
@@ -196,8 +186,7 @@ public sealed class VisitAssertionSteps
     [Then("the visit shows the corrected description and an unchanged date")]
     public void TheVisitShowsTheCorrectedDescriptionAndAnUnchangedDate()
     {
-        var fetched = _state.Get<ApiResponse<Visit>>("VisitGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /visits/{visitId} answered 200 with no body.");
+        var fetched = _state.Body<Visit>("VisitGetByIdResponse");
         var submitted = _state.Get<Visit>("VisitUpdateRequest");
         var petId = _state.CreatedPet.Id;
         var visitId = fetched.Id;
@@ -213,8 +202,7 @@ public sealed class VisitAssertionSteps
     [Then("the pet details show exactly one visit with the corrected description")]
     public void ThePetDetailsShowExactlyOneVisitWithTheCorrectedDescription()
     {
-        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
+        var fetched = _state.Body<Pet>("PetGetByIdResponse");
         var submitted = _state.Get<Visit>("VisitUpdateRequest");
         var petId = fetched.Id;
         var visitId = submitted.Id ?? throw new InvalidOperationException("Updated visit carries no id.");
@@ -260,8 +248,7 @@ public sealed class VisitAssertionSteps
     [Then("the second visit is unaffected by the first one's edit")]
     public void TheSecondVisitIsUnaffectedByTheFirstOnesEdit()
     {
-        var fetched = _state.Get<ApiResponse<Visit>>("VisitGetSecondByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /visits/{visitId} answered 200 with no body.");
+        var fetched = _state.Body<Visit>("VisitGetSecondByIdResponse");
         var submitted = _state.Get<Visit>("VisitAddSecondRequest");
         var petId = _state.CreatedPet.Id;
         var visitId = fetched.Id;
@@ -279,14 +266,12 @@ public sealed class VisitAssertionSteps
     [Then("the pet's visit history shows the corrected visit and the untouched one")]
     public void ThePetsVisitHistoryShowsTheCorrectedVisitAndTheUntouchedOne()
     {
-        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
+        var fetched = _state.Body<Pet>("PetGetByIdResponse");
         var petId = fetched.Id;
 
         var corrected = _state.Get<Visit>("VisitUpdateRequest");
         var correctedId = corrected.Id ?? throw new InvalidOperationException("Updated visit carries no id.");
-        var untouched = _state.Get<ApiResponse<Visit>>("VisitAddSecondResponse").Body
-            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets/{petId}/visits answered 201 with no body.");
+        var untouched = _state.Body<Visit>("VisitAddSecondResponse");
         var untouchedSubmitted = _state.Get<Visit>("VisitAddSecondRequest");
 
         fetched.Visits.Should().NotBeNull($"pet {petId}'s details must carry a visits field")

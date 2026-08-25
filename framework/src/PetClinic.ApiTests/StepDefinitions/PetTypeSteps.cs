@@ -70,7 +70,7 @@ public sealed class PetTypeSteps
     [When("the pet type details are opened")]
     public async Task ThePetTypeDetailsAreOpened()
     {
-        var petTypeId = _state.CreatedPetType.Id ?? throw new InvalidOperationException("Pet type has no id to open.");
+        var petTypeId = _state.CreatedPetTypeId;
         var response = _check.Expect(await _petTypes.GetById(petTypeId), HttpStatusCode.OK);
 
         _state.CreatedPetType = response.Body ?? throw new InvalidOperationException("GET /pettypes/{petTypeId} answered 200 with no body.");
@@ -80,7 +80,7 @@ public sealed class PetTypeSteps
     [When("the pet type is deleted")]
     public async Task ThePetTypeIsDeleted()
     {
-        var petTypeId = _state.CreatedPetType.Id ?? throw new InvalidOperationException("Pet type has no id to delete.");
+        var petTypeId = _state.CreatedPetTypeId;
         var response = _check.Expect(await _petTypes.Delete(petTypeId), HttpStatusCode.NoContent);
         _state.Set("PetTypeDeleteResponse", response);
     }

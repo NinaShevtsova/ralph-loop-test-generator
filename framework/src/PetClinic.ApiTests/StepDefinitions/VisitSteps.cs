@@ -34,8 +34,8 @@ public sealed class VisitSteps
     [When("a visit is recorded for the pet")]
     public async Task AVisitIsRecordedForThePet()
     {
-        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id.");
-        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id.");
+        var ownerId = _state.CreatedOwnerId;
+        var petId = _state.CreatedPetId;
         var data = _data.For<VisitCase>();
 
         var visit = new Visit
@@ -69,8 +69,8 @@ public sealed class VisitSteps
     [When("a visit is recorded for the pet with a future date")]
     public async Task AVisitIsRecordedForThePetWithAFutureDate()
     {
-        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id.");
-        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id.");
+        var ownerId = _state.CreatedOwnerId;
+        var petId = _state.CreatedPetId;
         var data = _data.For<VisitCase>();
 
         var visit = new Visit
@@ -96,7 +96,7 @@ public sealed class VisitSteps
     [When("a visit is recorded in the clinic log")]
     public async Task AVisitIsRecordedInTheClinicLog()
     {
-        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id.");
+        var petId = _state.CreatedPetId;
         var data = _data.For<SecondVisitCase>();
 
         var visit = new Visit
@@ -125,7 +125,7 @@ public sealed class VisitSteps
     [When("the visit details are opened")]
     public async Task TheVisitDetailsAreOpened()
     {
-        var visitId = _state.CreatedVisit.Id ?? throw new InvalidOperationException("Visit has no id to open.");
+        var visitId = _state.CreatedVisitId;
         var response = _check.Expect(await _visits.GetById(visitId), HttpStatusCode.OK);
 
         _state.CreatedVisit = response.Body ?? throw new InvalidOperationException("GET /visits/{visitId} answered 200 with no body.");
@@ -161,7 +161,7 @@ public sealed class VisitSteps
     [When("the visit is deleted")]
     public async Task TheVisitIsDeleted()
     {
-        var visitId = _state.CreatedVisit.Id ?? throw new InvalidOperationException("Visit has no id to delete.");
+        var visitId = _state.CreatedVisitId;
         var response = _check.Expect(await _visits.Delete(visitId), HttpStatusCode.NoContent);
         _state.Set("VisitDeleteResponse", response);
     }
@@ -173,7 +173,7 @@ public sealed class VisitSteps
     [When("the visit is deleted again")]
     public async Task TheVisitIsDeletedAgain()
     {
-        var visitId = _state.CreatedVisit.Id ?? throw new InvalidOperationException("Visit has no id to delete.");
+        var visitId = _state.CreatedVisitId;
         var response = _check.Expect(await _visits.Delete(visitId), HttpStatusCode.NotFound);
         _state.Set("VisitDeleteAgainResponse", response);
     }
@@ -184,7 +184,7 @@ public sealed class VisitSteps
     [When("an attempt is made to open the visit details")]
     public async Task AnAttemptIsMadeToOpenTheVisitDetails()
     {
-        var visitId = _state.CreatedVisit.Id ?? throw new InvalidOperationException("Visit has no id to open.");
+        var visitId = _state.CreatedVisitId;
         var response = _check.Expect(await _visits.GetById(visitId), HttpStatusCode.NotFound);
         _state.Set("VisitGetByIdAfterDeleteResponse", response);
     }
@@ -200,8 +200,8 @@ public sealed class VisitSteps
     [When("a second visit is recorded for the pet")]
     public async Task ASecondVisitIsRecordedForThePet()
     {
-        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id.");
-        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id.");
+        var ownerId = _state.CreatedOwnerId;
+        var petId = _state.CreatedPetId;
         var data = _data.For<SecondVisitCase>();
 
         var visit = new Visit

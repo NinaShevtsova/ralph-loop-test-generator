@@ -108,6 +108,12 @@ The asymmetry matters and is easy to get wrong: a pet is created **only** throug
 by **two** routes (`PUT /pets/{petId}` and `PUT /owners/{ownerId}/pets/{petId}`); a visit is created
 by **two** routes (`POST /owners/{ownerId}/pets/{petId}/visits` and `POST /visits`).
 
+**A shared helper type gets its own file.** If the four services end up routing their calls through
+a common adapter, it is declared in `PROJECT/Services/RouteClient.cs`, not inside one service's file.
+Measured on a build that put it inside `OwnersService.cs`: three of its four users could not see why it
+lived there, and a whole-tree check read its `public` members as `OwnersService`'s own API and blocked
+a run on a method no step should ever call.
+
 ### S6 — UniqueData
 
 **Files:** `PROJECT/Support/UniqueData.cs`, `PROJECT/Tests/Unit/UniqueDataTests.cs`
@@ -186,6 +192,16 @@ six F-03 criteria need, and `Support/` is outside the stage-1 fence so no later 
 
 Fixed per-entity properties are fine as a convenience **on top of** the keyed store. They are not a
 substitute for it.
+
+**The nullable guards live in this class, not at every call site.** `ApiResponse<T>.Body` is
+nullable and every model's `Id` is `int?`, so a step that reads either needs a guard. Expose them here
+once — a `Body<T>(key)` that returns the stored response's body or throws a named failure, and an id
+accessor per created entity — rather than letting each step write its own `?? throw`.
+
+Measured on a build that did not: **63** copies of the body guard and **36** of the id guard across the
+step files, the same sentence repeated up to 13 times, in four different wordings for the same
+condition. Changing what a missing body reports meant 63 edits. Collapsing them removed 63 net lines
+and changed no behaviour — 33/33 before and after.
 
 ### S10 — TestDataProvider
 

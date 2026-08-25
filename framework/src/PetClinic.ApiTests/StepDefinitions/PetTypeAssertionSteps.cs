@@ -25,8 +25,7 @@ public sealed class PetTypeAssertionSteps
     [Then("the directory returns at least one pet type")]
     public void TheDirectoryReturnsAtLeastOnePetType()
     {
-        var directory = _state.Get<ApiResponse<List<PetType>>>("PetTypeDirectoryResponse").Body
-            ?? throw new InvalidOperationException("GET /pettypes answered 200 with no body.");
+        var directory = _state.Body<List<PetType>>("PetTypeDirectoryResponse");
 
         directory.Should().NotBeEmpty("a pet cannot be given a type if the directory has none to offer");
     }
@@ -38,10 +37,8 @@ public sealed class PetTypeAssertionSteps
     [Then("the pet type exists, unchanged")]
     public void ThePetTypeExistsUnchanged()
     {
-        var fetched = _state.Get<ApiResponse<PetType>>("PetTypeGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /pettypes/{petTypeId} answered 200 with no body.");
-        var created = _state.Get<ApiResponse<PetType>>("PetTypeCreateResponse").Body
-            ?? throw new InvalidOperationException("POST /pettypes answered 201 with no body.");
+        var fetched = _state.Body<PetType>("PetTypeGetByIdResponse");
+        var created = _state.Body<PetType>("PetTypeCreateResponse");
         var petTypeId = fetched.Id;
 
         fetched.Id.Should().Be(created.Id, $"pet type {petTypeId} must still be reachable by the same id after its pet was deleted");

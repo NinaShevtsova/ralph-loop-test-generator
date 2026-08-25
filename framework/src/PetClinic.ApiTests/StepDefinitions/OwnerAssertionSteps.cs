@@ -27,8 +27,7 @@ public sealed class OwnerAssertionSteps
     [Then("the created owner has an assigned id, the submitted values and an empty pets list")]
     public void TheCreatedOwnerHasAnAssignedIdTheSubmittedValuesAndAnEmptyPetsList()
     {
-        var owner = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
-            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+        var owner = _state.Body<Owner>("OwnerCreateResponse");
         var submitted = _state.Get<Owner>("OwnerCreateRequest");
         var ownerId = owner.Id;
 
@@ -48,10 +47,8 @@ public sealed class OwnerAssertionSteps
     [Then("the owner details show the submitted values and match the registration response")]
     public void TheOwnerDetailsShowTheSubmittedValuesAndMatchTheRegistrationResponse()
     {
-        var created = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
-            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
-        var fetched = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
+        var created = _state.Body<Owner>("OwnerCreateResponse");
+        var fetched = _state.Body<Owner>("OwnerGetByIdResponse");
         var ownerId = created.Id;
 
         fetched.Should().BeEquivalentTo(created,
@@ -65,11 +62,9 @@ public sealed class OwnerAssertionSteps
     [Then("the owner appears exactly once in the owners list with the submitted values")]
     public void TheOwnerAppearsExactlyOnceInTheOwnersListWithTheSubmittedValues()
     {
-        var created = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
-            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+        var created = _state.Body<Owner>("OwnerCreateResponse");
         var ownerId = created.Id ?? throw new InvalidOperationException("Created owner carries no id.");
-        var directory = _state.Get<ApiResponse<List<Owner>>>("OwnerDirectoryResponse").Body
-            ?? throw new InvalidOperationException("GET /owners answered 200 with no body.");
+        var directory = _state.Body<List<Owner>>("OwnerDirectoryResponse");
 
         directory.Should().ContainSingle(o => o.Id == ownerId,
             $"registering owner {ownerId} must not create a duplicate entry in the owners list");
@@ -89,8 +84,7 @@ public sealed class OwnerAssertionSteps
     [Then("the owner update returns no owner data")]
     public void TheOwnerUpdateReturnsNoOwnerData()
     {
-        var registered = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
-            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+        var registered = _state.Body<Owner>("OwnerCreateResponse");
         var response = _state.Get<ApiResponse<object?>>("OwnerUpdateResponse");
         var ownerId = registered.Id;
 
@@ -105,11 +99,9 @@ public sealed class OwnerAssertionSteps
     [Then("the owner details show the updated contacts and the previous values that were not changed")]
     public void TheOwnerDetailsShowTheUpdatedContactsAndThePreviousValuesThatWereNotChanged()
     {
-        var registered = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
-            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+        var registered = _state.Body<Owner>("OwnerCreateResponse");
         var submittedUpdate = _state.Get<Owner>("OwnerUpdateRequest");
-        var fetched = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
+        var fetched = _state.Body<Owner>("OwnerGetByIdResponse");
         var ownerId = registered.Id;
 
         fetched.Id.Should().Be(ownerId, $"owner {ownerId} must still be reachable by the same id after the update");
@@ -128,12 +120,10 @@ public sealed class OwnerAssertionSteps
     [Then("the owner appears exactly once in the owners list with the updated contacts and without the previous ones")]
     public void TheOwnerAppearsExactlyOnceInTheOwnersListWithTheUpdatedContactsAndWithoutThePreviousOnes()
     {
-        var registered = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
-            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+        var registered = _state.Body<Owner>("OwnerCreateResponse");
         var submittedUpdate = _state.Get<Owner>("OwnerUpdateRequest");
         var ownerId = registered.Id ?? throw new InvalidOperationException("Registered owner carries no id.");
-        var directory = _state.Get<ApiResponse<List<Owner>>>("OwnerDirectoryResponse").Body
-            ?? throw new InvalidOperationException("GET /owners answered 200 with no body.");
+        var directory = _state.Body<List<Owner>>("OwnerDirectoryResponse");
 
         directory.Should().ContainSingle(o => o.Id == ownerId,
             $"updating owner {ownerId}'s contacts must not create a duplicate entry in the owners list");
@@ -152,8 +142,7 @@ public sealed class OwnerAssertionSteps
     [Then("the owner deregistration returns no owner data")]
     public void TheOwnerDeregistrationReturnsNoOwnerData()
     {
-        var registered = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
-            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+        var registered = _state.Body<Owner>("OwnerCreateResponse");
         var response = _state.Get<ApiResponse<object?>>("OwnerDeleteResponse");
         var ownerId = registered.Id;
 
@@ -165,8 +154,7 @@ public sealed class OwnerAssertionSteps
     [Then("the owner details are no longer available")]
     public void TheOwnerDetailsAreNoLongerAvailable()
     {
-        var registered = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
-            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+        var registered = _state.Body<Owner>("OwnerCreateResponse");
         var response = _state.Get<ApiResponse<Owner>>("OwnerGetByIdAfterDeleteResponse");
         var ownerId = registered.Id;
 
@@ -179,11 +167,9 @@ public sealed class OwnerAssertionSteps
     [Then("the owner is missing from the owners list while other owners remain")]
     public void TheOwnerIsMissingFromTheOwnersListWhileOtherOwnersRemain()
     {
-        var registered = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
-            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+        var registered = _state.Body<Owner>("OwnerCreateResponse");
         var ownerId = registered.Id ?? throw new InvalidOperationException("Registered owner carries no id.");
-        var directory = _state.Get<ApiResponse<List<Owner>>>("OwnerDirectoryResponse").Body
-            ?? throw new InvalidOperationException("GET /owners answered 200 with no body.");
+        var directory = _state.Body<List<Owner>>("OwnerDirectoryResponse");
 
         directory.Should().NotContain(o => o.Id == ownerId,
             $"owner {ownerId} must no longer appear in the owners list after deregistration");
@@ -194,8 +180,7 @@ public sealed class OwnerAssertionSteps
     [Then("the repeated deregistration reports that the owner no longer exists")]
     public void TheRepeatedDeregistrationReportsThatTheOwnerNoLongerExists()
     {
-        var registered = _state.Get<ApiResponse<Owner>>("OwnerCreateResponse").Body
-            ?? throw new InvalidOperationException("POST /owners answered 201 with no body.");
+        var registered = _state.Body<Owner>("OwnerCreateResponse");
         var response = _state.Get<ApiResponse<object?>>("OwnerDeleteAgainResponse");
         var ownerId = registered.Id;
 
@@ -210,10 +195,9 @@ public sealed class OwnerAssertionSteps
     [Then("the owner details show the pet with its recorded visit")]
     public void TheOwnerDetailsShowThePetWithItsRecordedVisit()
     {
-        var owner = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
-        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Created pet carries no id.");
-        var visitId = _state.CreatedVisit.Id ?? throw new InvalidOperationException("Created visit carries no id.");
+        var owner = _state.Body<Owner>("OwnerGetByIdResponse");
+        var petId = _state.CreatedPetId;
+        var visitId = _state.CreatedVisitId;
         var ownerId = owner.Id;
 
         owner.Pets.Should().NotBeNull($"owner {ownerId}'s response must carry a pets field")
@@ -232,10 +216,8 @@ public sealed class OwnerAssertionSteps
     [Then("the owner details show the added pet with the submitted values")]
     public void TheOwnerDetailsShowTheAddedPetWithTheSubmittedValues()
     {
-        var owner = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
-        var addedPet = _state.Get<ApiResponse<Pet>>("OwnerAddPetResponse").Body
-            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var owner = _state.Body<Owner>("OwnerGetByIdResponse");
+        var addedPet = _state.Body<Pet>("OwnerAddPetResponse");
         var petId = addedPet.Id ?? throw new InvalidOperationException("Created pet carries no id.");
         var ownerId = owner.Id;
 
@@ -255,9 +237,8 @@ public sealed class OwnerAssertionSteps
     [Then("the owner details show the pet with its new name")]
     public void TheOwnerDetailsShowThePetWithItsNewName()
     {
-        var owner = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
-        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Created pet carries no id.");
+        var owner = _state.Body<Owner>("OwnerGetByIdResponse");
+        var petId = _state.CreatedPetId;
         var expectedName = _state.CreatedPet.Name;
         var ownerId = owner.Id;
 
@@ -276,12 +257,9 @@ public sealed class OwnerAssertionSteps
     [Then("the owner details show both pets with their own names")]
     public void TheOwnerDetailsShowBothPetsWithTheirOwnNames()
     {
-        var owner = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
-        var first = _state.Get<ApiResponse<Pet>>("OwnerAddPetResponse").Body
-            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
-        var second = _state.Get<ApiResponse<Pet>>("OwnerAddSecondPetResponse").Body
-            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var owner = _state.Body<Owner>("OwnerGetByIdResponse");
+        var first = _state.Body<Pet>("OwnerAddPetResponse");
+        var second = _state.Body<Pet>("OwnerAddSecondPetResponse");
         var ownerId = owner.Id;
 
         owner.Pets.Should().NotBeNull($"owner {ownerId}'s response must carry a pets field")
@@ -305,10 +283,8 @@ public sealed class OwnerAssertionSteps
     [Then("the owner details show only the second pet with its original name")]
     public void TheOwnerDetailsShowOnlyTheSecondPetWithItsOriginalName()
     {
-        var owner = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
-        var second = _state.Get<ApiResponse<Pet>>("OwnerAddSecondPetResponse").Body
-            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets answered 201 with no body.");
+        var owner = _state.Body<Owner>("OwnerGetByIdResponse");
+        var second = _state.Body<Pet>("OwnerAddSecondPetResponse");
         var ownerId = owner.Id;
 
         owner.Pets.Should().NotBeNull($"owner {ownerId}'s response must carry a pets field")
@@ -326,9 +302,8 @@ public sealed class OwnerAssertionSteps
     [Then("the owner details show the pet with an empty visit history")]
     public void TheOwnerDetailsShowThePetWithAnEmptyVisitHistory()
     {
-        var owner = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
-            ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
-        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Created pet carries no id.");
+        var owner = _state.Body<Owner>("OwnerGetByIdResponse");
+        var petId = _state.CreatedPetId;
         var ownerId = owner.Id;
 
         owner.Pets.Should().NotBeNull($"owner {ownerId}'s response must carry a pets field")
