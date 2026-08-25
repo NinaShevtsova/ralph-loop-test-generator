@@ -36,5 +36,22 @@
       "description": "Follow-up check qwerty",
       "date": "2026-06-20"
     }
+  },
+  "AC-F03-03": {
+    "owner": {
+      "firstName": "Bohdan",
+      "lastName": "Kovalenko",
+      "address": "5 Franka Street",
+      "city": "Ternopil",
+      "telephone": "0631234567"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2021-03-10"
+    },
+    "visit": {
+      "description": "Vaccination booking qwerty",
+      "date": "2026-09-25"
+    }
   }
 }

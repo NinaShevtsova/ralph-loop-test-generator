@@ -36,3 +36,15 @@ Feature: F-03 Pet visit: recording the entry and the visit history
     Then the pet details show both visits recorded for it
     When the visits log is requested
     Then both visits appear in the visits list with the pet's id
+
+  @AC-F03-03 @US-05
+  Scenario: AC-F03-03 a visit can be scheduled for a future date
+    Given an owner is registered
+    And the pet types directory is requested
+    And a pet is added to the owner
+    When a visit is recorded for the pet
+    Then the created visit has an assigned id, the submitted values and a link to the pet
+    When the visit details are opened
+    Then the visit still shows the description and date it was recorded with
+    When the pet details are opened
+    Then the pet details show the visit that was recorded for it
