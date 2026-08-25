@@ -31,6 +31,10 @@
     "visit": {
       "description": "Skin check qwerty",
       "date": "2026-06-15"
+    },
+    "secondVisit": {
+      "description": "Follow-up check qwerty",
+      "date": "2026-06-20"
     }
   }
 }

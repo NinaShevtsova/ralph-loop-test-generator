@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json.Serialization;
 using PetClinic.ApiTests.Http;
 using PetClinic.ApiTests.Models;
 using PetClinic.ApiTests.Services;
@@ -60,11 +61,14 @@ public sealed class VisitSteps
 
     // §7's other creation route. `petId` is required here (unlike the nested route, which takes it
     // from the path) — and `id` is still never set: §11 records that submitting it is a 500 on save.
+    // Reads the "secondVisit" data-file entry (via SecondVisitCase below), not the "visit" entry the
+    // nested route reads: AC-F03-02's Given calls for two visits with different unique descriptions
+    // AND different dates, and UniqueData only makes the description differ, not the date.
     [When("a visit is recorded in the clinic log")]
     public async Task AVisitIsRecordedInTheClinicLog()
     {
         var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id.");
-        var data = _data.For<VisitCase>();
+        var data = _data.For<SecondVisitCase>();
 
         var visit = new Visit
         {
@@ -136,5 +140,18 @@ public sealed class VisitSteps
         var visitId = _state.CreatedVisit.Id ?? throw new InvalidOperationException("Visit has no id to open.");
         var response = _check.Expect(await _visits.GetById(visitId), HttpStatusCode.NotFound);
         _state.Set("VisitGetByIdAfterDeleteResponse", response);
+    }
+
+    // Same shape as TestData/Cases/VisitCase, kept local to this file rather than added under
+    // TestData/ (outside the stage-1 fence): its only purpose is to make TestDataProvider.For<T>()
+    // resolve the data file's "secondVisit" entry instead of "visit" (CasePropertyName strips
+    // "Case" and lower-cases the first letter of the type name).
+    private sealed class SecondVisitCase
+    {
+        [JsonPropertyName("description")]
+        public string Description { get; set; } = string.Empty;
+
+        [JsonPropertyName("date")]
+        public string Date { get; set; } = string.Empty;
     }
 }
