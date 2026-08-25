@@ -166,6 +166,18 @@ public sealed class VisitSteps
         _state.Set("VisitDeleteResponse", response);
     }
 
+    // AC-F03-05 step 6: a second DELETE on the same visit id "the visit is deleted" already removed.
+    // Expected code is the opposite of "the visit is deleted" (404, not 204), so this is its own step
+    // rather than a reworded one -- mirrors "the owner is deleted again" (OwnerSteps.cs) for the
+    // visit route.
+    [When("the visit is deleted again")]
+    public async Task TheVisitIsDeletedAgain()
+    {
+        var visitId = _state.CreatedVisit.Id ?? throw new InvalidOperationException("Visit has no id to delete.");
+        var response = _check.Expect(await _visits.Delete(visitId), HttpStatusCode.NotFound);
+        _state.Set("VisitDeleteAgainResponse", response);
+    }
+
     // AC-F01-04 step 5: a GET on a visit removed along with its pet by the owner's deregistration
     // cascade, not by "the visit is deleted". Expected code is the opposite of "the visit details
     // are opened" (404, not 200), so this is its own step rather than a reworded one.

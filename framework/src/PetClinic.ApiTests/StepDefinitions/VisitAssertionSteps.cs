@@ -228,4 +228,28 @@ public sealed class VisitAssertionSteps
         recorded.Date.Should().Be(submitted.Date, $"visit {visitId}'s date must be unchanged in pet {petId}'s history");
         recorded.PetId.Should().Be(petId, $"visit {visitId} in pet {petId}'s history must link back to pet {petId}");
     }
+
+    // AC-F03-05 step 1: EnsureStatus inside "the visit is deleted" already covers "code 204"; this is
+    // the other half §7 states for every DELETE -- the same "empty body" check PetAssertionSteps/
+    // OwnerAssertionSteps already apply to their own deletes, now for a visit.
+    [Then("the visit deletion returns no visit data")]
+    public void TheVisitDeletionReturnsNoVisitData()
+    {
+        var visitId = _state.CreatedVisit.Id;
+        var response = _state.Get<ApiResponse<object?>>("VisitDeleteResponse");
+
+        response.RawContent.Should().BeNullOrEmpty($"deleting visit {visitId} must answer with an empty body (§7)");
+    }
+
+    // AC-F03-05 step 6: mirrors "the repeated deregistration reports that the owner no longer exists"
+    // (OwnerAssertionSteps) for the visit route -- a 404 carries no body per §7.
+    [Then("the repeated deletion reports that the visit no longer exists")]
+    public void TheRepeatedDeletionReportsThatTheVisitNoLongerExists()
+    {
+        var visitId = _state.CreatedVisit.Id;
+        var response = _state.Get<ApiResponse<object?>>("VisitDeleteAgainResponse");
+
+        response.RawContent.Should().BeNullOrEmpty(
+            $"a 404 for visit {visitId}'s repeated deletion must carry no body (§7)");
+    }
 }

@@ -319,4 +319,23 @@ public sealed class OwnerAssertionSteps
         var pet = owner.Pets!.Single(p => p.Id == second.Id);
         pet.Name.Should().Be(second.Name, $"owner {ownerId}'s second pet {second.Id} must keep its original name after the first pet was deleted");
     }
+
+    // AC-F03-05 step 5: mirrors "the owner details show the pet with its recorded visit" -- the pet
+    // must still be nested inside the owner details after its only visit was cancelled, now with an
+    // empty visits array instead of the one it used to carry.
+    [Then("the owner details show the pet with an empty visit history")]
+    public void TheOwnerDetailsShowThePetWithAnEmptyVisitHistory()
+    {
+        var owner = _state.Get<ApiResponse<Owner>>("OwnerGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /owners/{ownerId} answered 200 with no body.");
+        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Created pet carries no id.");
+        var ownerId = owner.Id;
+
+        owner.Pets.Should().NotBeNull($"owner {ownerId}'s response must carry a pets field")
+            .And.ContainSingle(p => p.Id == petId,
+                $"owner {ownerId}'s details must still show pet {petId} after its visit was cancelled");
+
+        var pet = owner.Pets!.Single(p => p.Id == petId);
+        pet.Visits.Should().BeNullOrEmpty($"pet {petId}'s entry in the owner details must show an empty visit history after its visit was cancelled");
+    }
 }

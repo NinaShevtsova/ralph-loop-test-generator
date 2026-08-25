@@ -61,3 +61,22 @@ Feature: F-03 Pet visit: recording the entry and the visit history
     Then the visit shows the corrected description and an unchanged date
     When the pet details are opened
     Then the pet details show exactly one visit with the corrected description
+
+  @AC-F03-05 @US-01 @US-03
+  Scenario: AC-F03-05 a cancelled visit disappears from the history and the log, and cancelling again gives 404
+    Given an owner is registered
+    And the pet types directory is requested
+    And a pet is added to the owner
+    And a visit is recorded for the pet
+    When the visit is deleted
+    Then the visit deletion returns no visit data
+    When an attempt is made to open the visit details
+    Then the visit details are no longer available
+    When the pet details are opened
+    Then the pet's own details are unaffected and its visit history is empty
+    When the visits log is requested
+    Then the visit is missing from the visits list
+    When the owner details are opened
+    Then the owner details show the pet with an empty visit history
+    When the visit is deleted again
+    Then the repeated deletion reports that the visit no longer exists

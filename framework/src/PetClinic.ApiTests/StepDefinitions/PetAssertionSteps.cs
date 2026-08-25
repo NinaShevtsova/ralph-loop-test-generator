@@ -346,6 +346,24 @@ public sealed class PetAssertionSteps
             $"pet '{attempted.Name}' must never have been created since its owner did not exist");
     }
 
+    // AC-F03-05 step 3: name/birthDate/type.id compared against OwnerAddPetRequest -- what was
+    // actually submitted when the pet was added -- the same "compare against what was submitted"
+    // rule this file applies elsewhere; the visits array must now be empty, the one visit it held
+    // having just been cancelled.
+    [Then("the pet's own details are unaffected and its visit history is empty")]
+    public void ThePetsOwnDetailsAreUnaffectedAndItsVisitHistoryIsEmpty()
+    {
+        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
+        var submitted = _state.Get<Pet>("OwnerAddPetRequest");
+        var petId = fetched.Id;
+
+        fetched.Name.Should().Be(submitted.Name, $"pet {petId}'s name must be unchanged after cancelling its visit");
+        fetched.BirthDate.Should().Be(submitted.BirthDate, $"pet {petId}'s birth date must be unchanged after cancelling its visit");
+        fetched.Type.Id.Should().Be(submitted.Type.Id, $"pet {petId}'s type must be unchanged after cancelling its visit");
+        fetched.Visits.Should().BeNullOrEmpty($"pet {petId}'s visit history must be empty once its only visit has been cancelled");
+    }
+
     // Shared by both AC-F02-05 Then steps above: the visit's id, description and date must still be
     // the ones "a visit is recorded for the pet" created, whether read right after recording it or
     // again after the pet's name was changed by a PUT that never submitted a visits field.

@@ -69,5 +69,22 @@
       "description": "Ear infection follow-up qwerty",
       "date": "2026-07-10"
     }
+  },
+  "AC-F03-05": {
+    "owner": {
+      "firstName": "Solomiia",
+      "lastName": "Tkachenko",
+      "address": "14 Lesi Ukrainky Avenue",
+      "city": "Poltava",
+      "telephone": "0509876543"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2017-09-25"
+    },
+    "visit": {
+      "description": "Cancelled checkup qwerty",
+      "date": "2026-07-20"
+    }
   }
 }
