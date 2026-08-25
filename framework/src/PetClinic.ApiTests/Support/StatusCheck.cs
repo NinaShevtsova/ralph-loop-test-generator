@@ -20,8 +20,13 @@ namespace PetClinic.ApiTests.Support;
  * Splitting by call site would mean duplicating those five steps, which is the reuse-by-rewording the
  * step inventory exists to forbid.
  *
- * Reqnroll knows which keyword matched, including resolving an `And` to whatever opened the block,
- * so the role is read from the running step instead of being guessed.
+ * Reqnroll resolves the role AFTER a step has already been matched to a binding, and an `And`
+ * resolves to whatever keyword opened its block. That is the question this class asks.
+ *
+ * It says NOTHING about matching, and an earlier version of this comment blurred the two at the cost
+ * of an attempt on AC-F02-09. Matching still depends on the attribute: a step reached through
+ * `Given`/`And` needs a binding carrying [Given], and a When-only step in a Given chain answers
+ * "No matching step definition found" -- a matching error, before any role question is reached.
  *
  * Only step definitions get this. `ResourceTracker` drains in [AfterScenario] and the smoke tests are
  * plain NUnit -- neither has a current step, and a teardown failure is infrastructure in every case,
