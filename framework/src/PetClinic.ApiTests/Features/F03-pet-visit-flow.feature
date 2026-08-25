@@ -42,7 +42,7 @@ Feature: F-03 Pet visit: recording the entry and the visit history
     Given an owner is registered
     And the pet types directory is requested
     And a pet is added to the owner
-    When a visit is recorded for the pet
+    When a visit is recorded for the pet with a future date
     Then the created visit has an assigned id, the submitted values and a link to the pet
     When the visit details are opened
     Then the visit still shows the description and date it was recorded with

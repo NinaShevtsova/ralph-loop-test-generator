@@ -59,6 +59,35 @@ public sealed class VisitSteps
         _state.Tracker.TrackVisit(created.Id ?? throw new InvalidOperationException("Created visit carries no id."));
     }
 
+    // AC-F03-03's Given calls for a date one month ahead of the current one, not a value that can
+    // sit frozen in the data file (the AC's whole subject is that the *clock-relative* future is
+    // accepted, so a literal JSON date would silently degrade into a duplicate of "a visit is
+    // recorded for the pet" the day after it was authored). Computed via UniqueData.Date the same
+    // way Tests/Smoke/FrameworkSmokeTests.cs:80 does it, so the format matches what the running
+    // application accepts. Only the description is read from the data file; the "visit" entry's
+    // "date" key is unused by this step.
+    [When("a visit is recorded for the pet with a future date")]
+    public async Task AVisitIsRecordedForThePetWithAFutureDate()
+    {
+        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id.");
+        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id.");
+        var data = _data.For<VisitCase>();
+
+        var visit = new Visit
+        {
+            Description = UniqueData.VisitDescription(data.Description),
+            Date = UniqueData.Date(DateTime.UtcNow.AddMonths(1)),
+        };
+
+        var response = _check.Expect(await _visits.AddVisit(ownerId, petId, visit), HttpStatusCode.Created);
+        var created = response.Body ?? throw new InvalidOperationException("POST .../visits answered 201 with no body.");
+
+        _state.CreatedVisit = created;
+        _state.Set("VisitAddRequest", visit);
+        _state.Set("VisitAddResponse", response);
+        _state.Tracker.TrackVisit(created.Id ?? throw new InvalidOperationException("Created visit carries no id."));
+    }
+
     // §7's other creation route. `petId` is required here (unlike the nested route, which takes it
     // from the path) — and `id` is still never set: §11 records that submitting it is a 500 on save.
     // Reads the "secondVisit" data-file entry (via SecondVisitCase below), not the "visit" entry the
