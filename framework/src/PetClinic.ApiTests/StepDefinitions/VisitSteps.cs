@@ -149,6 +149,12 @@ public sealed class VisitSteps
 
         updated.Id = visitId;
         _state.CreatedVisit = updated;
+
+        // AC-F03-04 step 2's Then reopens the visit ("the visit details are opened"), which
+        // overwrites CreatedVisit with its own fetched body before that Then ever runs -- the same
+        // "keep the exact request body under its own key" rule VisitAddRequest already follows for
+        // the creation route.
+        _state.Set("VisitUpdateRequest", updated);
         _state.Set("VisitUpdateResponse", response);
     }
 

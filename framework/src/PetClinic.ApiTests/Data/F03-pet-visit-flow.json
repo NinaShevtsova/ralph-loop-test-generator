@@ -52,5 +52,22 @@
     "visit": {
       "description": "Vaccination booking qwerty"
     }
+  },
+  "AC-F03-04": {
+    "owner": {
+      "firstName": "Iryna",
+      "lastName": "Boiko",
+      "address": "9 Hrushevskoho Street",
+      "city": "Rivne",
+      "telephone": "0501112233"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2018-11-02"
+    },
+    "visit": {
+      "description": "Ear infection follow-up qwerty",
+      "date": "2026-07-10"
+    }
   }
 }

@@ -175,4 +175,57 @@ public sealed class VisitAssertionSteps
             $"visit {secondVisitId} must appear exactly once in the clinic-wide visits log");
         log.Single(v => v.Id == secondVisitId).PetId.Should().Be(petId, $"visit {secondVisitId}'s entry in the visits log must link back to pet {petId}");
     }
+
+    // AC-F03-04 step 1: EnsureStatus inside "the visit details are updated" already covers "code
+    // 204"; this is the other half §7 states for every PUT -- the same "empty body" check
+    // PetAssertionSteps/OwnerAssertionSteps already apply to their own PUTs, now for a visit.
+    [Then("the visit update returns no visit data")]
+    public void TheVisitUpdateReturnsNoVisitData()
+    {
+        var visitId = _state.Get<Visit>("VisitUpdateRequest").Id;
+        var response = _state.Get<ApiResponse<object?>>("VisitUpdateResponse");
+
+        response.RawContent.Should().BeNullOrEmpty($"visit {visitId}'s update must answer with an empty body (§7)");
+    }
+
+    // AC-F03-04 step 2: compared against VisitUpdateRequest -- the exact body "the visit details are
+    // updated" put on the wire -- not against _state.CreatedVisit, since "the visit details are
+    // opened" (the very step that performs this GET) overwrites CreatedVisit with its own fetched
+    // body before this Then ever runs, the same reason "the visit still shows the description and
+    // date it was recorded with" compares against VisitAddRequest instead.
+    [Then("the visit shows the corrected description and an unchanged date")]
+    public void TheVisitShowsTheCorrectedDescriptionAndAnUnchangedDate()
+    {
+        var fetched = _state.Get<ApiResponse<Visit>>("VisitGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /visits/{visitId} answered 200 with no body.");
+        var submitted = _state.Get<Visit>("VisitUpdateRequest");
+        var petId = _state.CreatedPet.Id;
+        var visitId = fetched.Id;
+
+        fetched.Description.Should().Be(submitted.Description, $"visit {visitId} must show the corrected description after the update");
+        fetched.Date.Should().Be(submitted.Date, $"visit {visitId}'s date must be unchanged by a description-only correction");
+        fetched.PetId.Should().Be(petId, $"visit {visitId} must still carry a link back to pet {petId}");
+    }
+
+    // AC-F03-04 step 3: "exactly one" per §10.4, compared against VisitUpdateRequest -- the corrected
+    // values -- so the pet's own history is proven to show the same correction the visit's own
+    // record already showed in step 2, not a stale copy from before the update.
+    [Then("the pet details show exactly one visit with the corrected description")]
+    public void ThePetDetailsShowExactlyOneVisitWithTheCorrectedDescription()
+    {
+        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
+        var submitted = _state.Get<Visit>("VisitUpdateRequest");
+        var petId = fetched.Id;
+        var visitId = submitted.Id ?? throw new InvalidOperationException("Updated visit carries no id.");
+
+        fetched.Visits.Should().NotBeNull($"pet {petId}'s details must carry a visits field")
+            .And.ContainSingle(v => v.Id == visitId,
+                $"pet {petId}'s visit history must show exactly one record for visit {visitId}");
+
+        var recorded = fetched.Visits!.Single(v => v.Id == visitId);
+        recorded.Description.Should().Be(submitted.Description, $"visit {visitId}'s entry in pet {petId}'s history must show the corrected description");
+        recorded.Date.Should().Be(submitted.Date, $"visit {visitId}'s date must be unchanged in pet {petId}'s history");
+        recorded.PetId.Should().Be(petId, $"visit {visitId} in pet {petId}'s history must link back to pet {petId}");
+    }
 }

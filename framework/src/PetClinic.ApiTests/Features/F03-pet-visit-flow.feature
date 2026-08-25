@@ -48,3 +48,16 @@ Feature: F-03 Pet visit: recording the entry and the visit history
     Then the visit still shows the description and date it was recorded with
     When the pet details are opened
     Then the pet details show the visit that was recorded for it
+
+  @AC-F03-04 @US-05 @US-02
+  Scenario: AC-F03-04 a corrected visit description is visible in the pet's history
+    Given an owner is registered
+    And the pet types directory is requested
+    And a pet is added to the owner
+    And a visit is recorded for the pet
+    When the visit details are updated
+    Then the visit update returns no visit data
+    When the visit details are opened
+    Then the visit shows the corrected description and an unchanged date
+    When the pet details are opened
+    Then the pet details show exactly one visit with the corrected description
