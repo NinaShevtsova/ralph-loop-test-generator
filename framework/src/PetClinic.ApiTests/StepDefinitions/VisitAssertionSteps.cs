@@ -252,4 +252,58 @@ public sealed class VisitAssertionSteps
         response.RawContent.Should().BeNullOrEmpty(
             $"a 404 for visit {visitId}'s repeated deletion must carry no body (§7)");
     }
+
+    // AC-F03-06 step 3: mirrors "the visit still shows the description and date it was recorded
+    // with", now reading the second visit's own keys (VisitGetSecondByIdResponse/VisitAddSecondRequest)
+    // instead of the first visit's -- proves editing the first visit left the second one's own record
+    // untouched.
+    [Then("the second visit is unaffected by the first one's edit")]
+    public void TheSecondVisitIsUnaffectedByTheFirstOnesEdit()
+    {
+        var fetched = _state.Get<ApiResponse<Visit>>("VisitGetSecondByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /visits/{visitId} answered 200 with no body.");
+        var submitted = _state.Get<Visit>("VisitAddSecondRequest");
+        var petId = _state.CreatedPet.Id;
+        var visitId = fetched.Id;
+
+        fetched.Description.Should().Be(submitted.Description, $"visit {visitId}'s description must be unaffected by the other visit's edit");
+        fetched.Date.Should().Be(submitted.Date, $"visit {visitId}'s date must be unaffected by the other visit's edit");
+        fetched.PetId.Should().Be(petId, $"visit {visitId} must still carry a link back to pet {petId}");
+    }
+
+    // AC-F03-06 step 4: mirrors "the pet details show both visits recorded for it" (AC-F03-02), but
+    // for one corrected visit (compared against VisitUpdateRequest, the exact PUT body) alongside one
+    // untouched visit (compared against VisitAddSecondRequest) -- and asserts the count is exactly
+    // two, since this pet's own history is scoped to what this scenario itself created (§10.4 bars
+    // absolute counts tied to the seeded data, not to a set the test built and fully knows).
+    [Then("the pet's visit history shows the corrected visit and the untouched one")]
+    public void ThePetsVisitHistoryShowsTheCorrectedVisitAndTheUntouchedOne()
+    {
+        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
+        var petId = fetched.Id;
+
+        var corrected = _state.Get<Visit>("VisitUpdateRequest");
+        var correctedId = corrected.Id ?? throw new InvalidOperationException("Updated visit carries no id.");
+        var untouched = _state.Get<ApiResponse<Visit>>("VisitAddSecondResponse").Body
+            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets/{petId}/visits answered 201 with no body.");
+        var untouchedSubmitted = _state.Get<Visit>("VisitAddSecondRequest");
+
+        fetched.Visits.Should().NotBeNull($"pet {petId}'s details must carry a visits field")
+            .And.HaveCount(2, $"pet {petId}'s visit history must show exactly the two visits this scenario recorded, after only one was edited");
+
+        fetched.Visits.Should().ContainSingle(v => v.Id == correctedId,
+            $"pet {petId}'s visit history must show the corrected visit {correctedId}");
+        var recordedCorrected = fetched.Visits!.Single(v => v.Id == correctedId);
+        recordedCorrected.Description.Should().Be(corrected.Description, $"visit {correctedId}'s entry in pet {petId}'s history must show the corrected description");
+        recordedCorrected.Date.Should().Be(corrected.Date, $"visit {correctedId}'s date must be unchanged in pet {petId}'s history");
+        recordedCorrected.PetId.Should().Be(petId, $"visit {correctedId} in pet {petId}'s history must link back to pet {petId}");
+
+        fetched.Visits.Should().ContainSingle(v => v.Id == untouched.Id,
+            $"pet {petId}'s visit history must still show the untouched visit {untouched.Id}");
+        var recordedUntouched = fetched.Visits!.Single(v => v.Id == untouched.Id);
+        recordedUntouched.Description.Should().Be(untouchedSubmitted.Description, $"visit {untouched.Id}'s description must be unaffected by the other visit's edit");
+        recordedUntouched.Date.Should().Be(untouchedSubmitted.Date, $"visit {untouched.Id}'s date must be unaffected by the other visit's edit");
+        recordedUntouched.PetId.Should().Be(petId, $"visit {untouched.Id} in pet {petId}'s history must link back to pet {petId}");
+    }
 }

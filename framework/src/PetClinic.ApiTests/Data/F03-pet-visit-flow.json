@@ -86,5 +86,26 @@
       "description": "Cancelled checkup qwerty",
       "date": "2026-07-20"
     }
+  },
+  "AC-F03-06": {
+    "owner": {
+      "firstName": "Taras",
+      "lastName": "Symonenko",
+      "address": "3 Sadova Street",
+      "city": "Chernihiv",
+      "telephone": "0507654321"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2019-08-04"
+    },
+    "visit": {
+      "description": "Dental cleaning qwerty",
+      "date": "2026-05-12"
+    },
+    "secondVisit": {
+      "description": "Allergy check qwerty",
+      "date": "2026-05-19"
+    }
   }
 }

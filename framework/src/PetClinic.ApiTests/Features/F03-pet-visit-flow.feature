@@ -80,3 +80,19 @@ Feature: F-03 Pet visit: recording the entry and the visit history
     Then the owner details show the pet with an empty visit history
     When the visit is deleted again
     Then the repeated deletion reports that the visit no longer exists
+
+  @AC-F03-06 @US-05 @US-02
+  Scenario: AC-F03-06 editing one visit does not affect the pet's remaining visits
+    Given an owner is registered
+    And the pet types directory is requested
+    And a pet is added to the owner
+    And a visit is recorded for the pet
+    And a second visit is recorded for the pet
+    When the visit details are updated
+    Then the visit update returns no visit data
+    When the visit details are opened
+    Then the visit shows the corrected description and an unchanged date
+    When the second visit's details are opened
+    Then the second visit is unaffected by the first one's edit
+    When the pet details are opened
+    Then the pet's visit history shows the corrected visit and the untouched one

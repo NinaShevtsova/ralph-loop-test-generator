@@ -189,6 +189,47 @@ public sealed class VisitSteps
         _state.Set("VisitGetByIdAfterDeleteResponse", response);
     }
 
+    // AC-F03-06's Given: a second visit recorded for the same pet, through the same nested route as
+    // "a visit is recorded for the pet", but under its own request/response keys and WITHOUT
+    // overwriting CreatedVisit -- the first visit must stay "the current visit" so this AC's steps
+    // 1-2 can reuse "the visit details are updated" / "the visit details are opened" unchanged; only
+    // this second visit's own steps below read its keys directly. Reads the "secondVisit" data-file
+    // entry via the SecondVisitCase already defined below for the clinic-log route, since the shape
+    // (description, date) is identical.
+    [Given("a second visit is recorded for the pet")]
+    [When("a second visit is recorded for the pet")]
+    public async Task ASecondVisitIsRecordedForThePet()
+    {
+        var ownerId = _state.CreatedOwner.Id ?? throw new InvalidOperationException("Owner has no id.");
+        var petId = _state.CreatedPet.Id ?? throw new InvalidOperationException("Pet has no id.");
+        var data = _data.For<SecondVisitCase>();
+
+        var visit = new Visit
+        {
+            Description = UniqueData.VisitDescription(data.Description),
+            Date = data.Date,
+        };
+
+        var response = _check.Expect(await _visits.AddVisit(ownerId, petId, visit), HttpStatusCode.Created);
+        var created = response.Body ?? throw new InvalidOperationException("POST .../visits answered 201 with no body.");
+
+        _state.Set("VisitAddSecondRequest", visit);
+        _state.Set("VisitAddSecondResponse", response);
+        _state.Tracker.TrackVisit(created.Id ?? throw new InvalidOperationException("Created visit carries no id."));
+    }
+
+    // AC-F03-06 step 3: opens the second visit specifically, by the id "a second visit is recorded
+    // for the pet" assigned it -- CreatedVisit still points at the first visit (the one being
+    // edited), so reusing "the visit details are opened" here would silently reopen the wrong visit.
+    [When("the second visit's details are opened")]
+    public async Task TheSecondVisitsDetailsAreOpened()
+    {
+        var visitId = _state.Get<ApiResponse<Visit>>("VisitAddSecondResponse").Body?.Id
+            ?? throw new InvalidOperationException("Second visit carries no id to open.");
+        var response = _check.Expect(await _visits.GetById(visitId), HttpStatusCode.OK);
+        _state.Set("VisitGetSecondByIdResponse", response);
+    }
+
     // Same shape as TestData/Cases/VisitCase, kept local to this file rather than added under
     // TestData/ (outside the stage-1 fence): its only purpose is to make TestDataProvider.For<T>()
     // resolve the data file's "secondVisit" entry instead of "visit" (CasePropertyName strips
