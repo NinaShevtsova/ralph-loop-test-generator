@@ -19,7 +19,7 @@
 
 ### Задача
 
-У клиента есть работающий API и есть **критерии приёмки** — короткие описания на
+У клиента есть работающий API и есть **критерии приёмки** ACs — короткие описания на
 человеческом языке, что система должна делать. Например:
 
 > После регистрации владельца его данные видны и в карточке владельца, и в списке
@@ -27,7 +27,7 @@
 
 Чтобы проверять это автоматически, инженер по автоматизации (SDET) должен превратить каждый
 критерий в **интеграционный API-автотест**: поднять тестовый фреймворк, написать сценарий,
-написать проверки, убрать за собой данные. Для двадцати критериев это примерно **8–11 рабочих
+написать проверки, убрать за собой данные.
 дней**.
 
 Работа при этом однообразная: двадцать раз один и тот же ритуал с разными подробностями.
@@ -76,18 +76,18 @@
 
 | Показатель | Значение |
 |---|---|
-| Файлов в тестовом проекте | **42** |
-| Строк кода C# | **2 742** |
+| Файлов в тестовом проекте | **52** |
+| Строк кода C# | **3 363** |
 | BDD-сценариев | **20** (по одному на критерий) |
-| Тестов в прогоне | **23** (20 сценариев + 3 дымовых) |
-| Step definitions (разных шагов, за которыми стоит код) | **88** |
-| Сколько раз эти шаги использованы в 20 сценариях | **279** |
-| Проверок в коде | **138** |
-| Проверок с человеческим объяснением ошибки | **138 из 138** |
+| Тестов в прогоне | **33** (20 сценариев + 1 проверка каркаса + 3 дымовых + 9 модульных) |
+| Step definitions (разных шагов, за которыми стоит код) | **98** |
+| Сколько раз эти шаги использованы в 20 сценариях | **282** |
+| Проверок в коде | **157** |
+| Проверок с человеческим объяснением ошибки | **157 из 157** |
 
 Две строки из этой таблицы стоят отдельного слова.
 
-**279 использований на 88 step definitions.** Сценарий состоит из **шагов** — строк на
+**282 использования на 98 step definitions.** Сценарий состоит из **шагов** — строк на
 человеческом языке:
 
 ```gherkin
@@ -101,40 +101,31 @@ When a pet is added to the owner    ← шаг: владельцу добавл�
 
 Главное здесь — они **переиспользуются**. `an owner is registered` используют все 20
 сценариев, `a pet is added to the owner` — 16. То есть 20 тестов собраны из общего словаря
-в 88 шагов, а не каждый со своим отдельным кодом.
+в 98 шагов, а не каждый со своим отдельным кодом.
 
 Практический смысл: если изменится способ регистрации владельца, править нужно **в одном
 месте**, и все 20 тестов начнут работать по-новому. Если бы у каждого сценария была своя
 копия кода, это были бы 20 правок и 20 шансов что-то пропустить.
 
-**138 проверок из 138 с человеческим объяснением.** Когда тест падает, он говорит не
+**157 проверок из 157 с человеческим объяснением.** Когда тест падает, он говорит не
 «ожидалось True, получено False», а «питомец id 42 должен был сохранить отправленную дату
 рождения». Разница — между получасом расследования и десятью секундами.
 
-### Сколько это стоило проходов
-
-| Стадия | Задач | Проходов |
-|---|---|---|
-| Построение фреймворка | 14 | 21 |
-| Генерация тестов | 20 | 26 (журнал фиксирует 19 из 20 критериев) |
-
-**13 критериев закрыто с первой попытки, 6 потребовали второй или третьей.** То есть
-примерно каждый третий критерий прошёл через доработку — и это нормальный, здоровый
-показатель: он означает, что судья действительно работает, а не штампует одобрения.
 
 ### Можно ли этим результатам верить
 
-Три независимые проверки, и все три прогнаны по-настоящему:
+Четыре независимые проверки, и все четыре прогнаны по-настоящему:
 
 | Проверка | Результат |
 |---|---|
-| **Негативный контроль** — приложение намеренно ломают, тесты обязаны покраснеть | **4 из 4** поломок пойманы; падало 4–7 тестов из 23, то есть ровно те, что касаются сломанного поля |
+| **Негативный контроль** — приложение намеренно ломают, тесты обязаны покраснеть | **6 из 6** поломок пойманы; падало от 4 до 23 тестов из 33, то есть ровно те, что касаются сломанного места |
+| **Сквозные инварианты** — свойства всего проекта, которые не видны в отдельном изменении | **7 из 7** |
 | **Экзамен судьи** — 10 примеров с заранее известной оценкой | **10 из 10**; ни один дефект не пропущен, ни одна хорошая работа не отклонена |
-| **Тесты самого механизма** | **554**, все зелёные |
+| **Тесты самого механизма** | **665**, все зелёные |
 
-Негативный контроль — важнейший из трёх. Он отвечает на вопрос, который никакое чтение кода
-не закрывает: **способны ли эти тесты вообще упасть?** Оказалось — да, и именно там, где
-должны.
+Негативный контроль — важнейший из четырёх. Он отвечает на вопрос, который никакое чтение
+кода не закрывает: **способны ли эти тесты вообще упасть?** Оказалось — да, и именно там,
+где должны.
 
 ---
 
@@ -213,29 +204,40 @@ When a pet is added to the owner    ← шаг: владельцу добавл�
 механически, и тем, что требует суждения.
 
 ```
-  ┌──────────────────────────────┐   ┌──────────────────────────────┐
-  │  МАШИНА                      │   │  ИИ-СУДЬЯ                    │
-  │  бесплатно, всегда           │   │  стоит денег, судит          │
-  │  одинаковый результат        │   │                              │
-  ├──────────────────────────────┤   ├──────────────────────────────┤
-  │ • собирается ли проект       │   │ • есть ли у КАЖДОГО          │
-  │ • все ли тесты зелёные       │   │   утверждения критерия       │
-  │ • трогали ли разрешённые     │   │   своя проверка              │
-  │   папки                      │   │ • нет ли проверки, которая   │
-  │ • есть ли нужный тег         │   │   не может упасть            │
-  │ • совпадает ли название      │   │ • не ослаблена ли проверка   │
-  │   дословно                   │   │   ради зелёного результата   │
-  │ • лежат ли данные в JSON     │   │ • правда ли новый шаг новый, │
-  │ • нет ли запрещённого:       │   │   а не пересказ существующего│
-  │   вбитый id, sleep,          │   │ • не ломает ли правка общего │
-  │   выключенный тест           │   │   шага принятые тесты        │
-  │ • ровно ли один сценарий     │   │                              │
-  └──────────────────────────────┘   └──────────────────────────────┘
-                 │                                  │
-                 └──────────┬───────────────────────┘
-                            ▼
-              строка закрывается ТОЛЬКО если
-              обе половины сказали «да»
+  ┌────────────────────────────────┐   ┌────────────────────────────────┐
+  │  МАШИНА                        │   │  ИИ-СУДЬЯ                      │
+  │  бесплатно, всегда             │   │  стоит денег, судит            │
+  │  одинаковый результат          │   │                                │
+  ├────────────────────────────────┤   ├────────────────────────────────┤
+  │ Про сам проход:                │   │ • есть ли у КАЖДОГО            │
+  │ • собирается ли проект         │   │   утверждения критерия         │
+  │ • все ли тесты зелёные         │   │   своя проверка                │
+  │ • трогали ли разрешённые папки │   │ • нет ли проверки, которая     │
+  │ • есть ли нужный тег           │   │   не может упасть              │
+  │ • совпадает ли название        │   │ • не ослаблена ли проверка     │
+  │ • лежат ли данные в JSON       │   │   ради зелёного результата     │
+  │ • ровно ли один сценарий       │   │ • правда ли новый шаг новый,   │
+  │ • нет вбитых id, sleep,        │   │   а не пересказ существующего  │
+  │   выключенных тестов           │   │ • читается ли сценарий как     │
+  │                                │   │   описание поведения, а не как │
+  │ Про форму теста:               │   │   пересказ запросов            │
+  │ • у каждого When есть свой Then│   │                                │
+  │ • каждый запрос заканчивается  │   │                                │
+  │   проверкой кода ответа        │   │                                │
+  │                                │   │                                │
+  │ Про проект целиком:            │   │                                │
+  │ • HTTP-клиент ровно один       │   │                                │
+  │ • нет вбитых адресов и портов  │   │                                │
+  │ • вызваны все маршруты         │   │                                │
+  │   контракта, и только они      │   │                                │
+  │ • ни одна фраза шага           │   │                                │
+  │   не привязана дважды          │   │                                │
+  └────────────────────────────────┘   └────────────────────────────────┘
+                   │                                    │
+                   └─────────────────┬──────────────────┘
+                                     ▼
+                       строка закрывается ТОЛЬКО если
+                       обе половины сказали «да»
 ```
 
 Правило простое: **всё, что решает шаблон, никогда не идёт к судье.** Шаблон даёт один
@@ -300,7 +302,7 @@ When a pet is added to the owner    ← шаг: владельцу добавл�
 | `loop/` | **мозг** | Сам цикл, инструкции для обоих ИИ, список задач |
 | `scripts/` | **механика** | Автоматические проверки и инструменты обслуживания |
 | `framework/` | **выход** | Сгенерированный тестовый проект на C# |
-| `tests/` | **страховка** | 554 теста самого механизма (не путать с `framework/`) |
+| `tests/` | **страховка** | 665 тестов самого механизма (не путать с `framework/`) |
 | `.claude/` | **обвязка** | Передача памяти между проходами и ограничение прав агента |
 
 ---
@@ -457,6 +459,8 @@ When a pet is added to the owner    ← шаг: владельцу добавл�
 - `runGate(steps, { root, run })` — выполняет список и **останавливается на первой
   неудаче**: запускать тесты после провальной сборки означает получить вторую, менее
   понятную ошибку.
+- `skipPreGate(...)` — можно ли не проверять то, что только что доказано: если после прошлого
+  зелёного гейта ничего не изменилось. Отвечает «нет» на всё, в чём не уверена.
 
 **Почему шаги — это данные, а не код.** Так их **порядок** можно проверить тестом. И этот
 порядок несущий: база сбрасывается перед тестами, потому что только тогда красный тест
@@ -466,11 +470,10 @@ When a pet is added to the owner    ← шаг: владельцу добавл�
 аргументы }` — без единого побочного эффекта.
 
 **Связи.** Читается `ralph.mjs`. Шаги ссылаются на `sut.mjs`, `check-tests.mjs`,
-`check-scaffold.mjs`, `steps-inventory.mjs` и `dotnet`.
+`check-scaffold.mjs`, `check-invariants.mjs`, `steps-inventory.mjs` и `dotnet`.
 
 **Пример (стадия тестов, после прохода).** сбросить базу → собрать → прогнать все тесты →
 `check-tests.mjs` с точкой отсчёта → перегенерировать каталог шагов.
-
 ---
 
 #### `invoke.mjs` — разговор с ИИ
@@ -564,25 +567,29 @@ When a pet is added to the owner    ← шаг: владельцу добавл�
   первую скобку и ответит `REJECT` — **каждый раз**. Поэтому обёртка разворачивается здесь,
   до разбора. Любой другой инструмент, отвечающий простым текстом, проходит насквозь без
   изменений.
+- `parseAgentUsage(stdout)` — то же самое для агента. Он отвечает **потоком**: по одному
+  объекту JSON на строку, прямо по ходу работы. Расходы лежат в последнем.
 - `addUsage(a, b)` — складывает расходы, корректно обходясь с отсутствующими числами.
 - `summaryRow(...)`, `summaryTotals(...)` — строка таблицы и итог.
 - `usageLine(usage)` — все четыре числа расходов отдельно, потому что они **по-разному
   тарифицируются**.
 - `cell(text)` — сводит любой текст к безопасному содержимому ячейки.
 
-**Что именно считается расходами.** Записываются расходы **судьи**. Расходы
-**агента** не записываются, и это осознанное ограничение: его вывод показывается вживую,
-чтобы человек мог следить за работой, а режим, который выдал бы цифры, эту возможность
-забирает. Вместо них в отчёте — количество проходов и время.
+**Что именно считается расходами.** Расходы **обеих** сторон, отдельными колонками, плюс
+сумма прохода. Агент отвечает потоком — строки печатаются по мере работы, а последняя несёт
+цифры, — поэтому следить за работой и считать её стоимость больше не взаимоисключающие вещи.
 
-**Вход / выход.** Принимает ответ судьи и данные прохода. Создаёт файл отчёта в
+**Вход / выход.** Принимает ответы обоих ИИ и данные прохода. Создаёт файл отчёта в
 `loop/runs/`.
 
-**Связи.** Вызывается `ralph.mjs` после каждого прохода; `usageLine` использует ещё и
-`eval-judge.mjs`.
+**Связи.** Вызывается `ralph.mjs` после каждого прохода; `parseAgentUsage` — ещё и из
+`invoke.mjs`, `usageLine` — из `eval-judge.mjs`.
 
 **Пример из реального прогона.**
-`| 1 | AC-F01-03 | agent | judged | PASS | 83556 (+275k из кеша) | 4909 | $1.0958 | 381 с |`
+`| 1 | AC-F03-01 | agent | judged | PASS | 89962 (+353k) | 8622 | $1.2916 | 155884 (+2761k) | 15009 | $1.9837 | $3.2753 | 485 |`
+
+Слева расходы судьи, справа — агента, затем сумма прохода и время. Именно из этих строк
+собраны «$3,6 на критерий» и «1,2–1,33 прохода на критерий» из раздела 2.
 
 ---
 
@@ -780,6 +787,12 @@ Windows при загрузке проекта может сменить его 
 - `literalIdsInFeature`, `literalIdsInData` — то же для файла сценариев и файла данных, где
   те же ошибки выглядят иначе.
 - `forbiddenApis(source)` — паузы и выключатели тестов.
+`whenWithoutThen(feature)` — в **сценарии** есть шаг «сделай запрос», но нет шага, который
+  смотрит на результат.
+- `uncheckedServiceCalls(sources)` — в **коде** есть запрос к приложению, но никто не
+  проверил, с каким кодом оно ответило.
+- `callsAnyService(sources)` — делает ли проект такие запросы вообще; если нет, правило выше
+  честно говорит «не смотрел» вместо зелёной строки.
 - `scenarioTags`, `scenarioTitles`, `scenarioOutlines`, `malformedAcTags`,
   `foreignLanguageHeader` — разбор файла сценариев.
 - `excludings(source)` — **не проверка, а сбор данных**: находит места, где сравнение
@@ -890,8 +903,8 @@ Windows при загрузке проекта может сменить его 
 
 **Пример.** Построена волна 1. Гейт с `--through-row S1` проверяет только **пять** записей
 этого шага — файл решения, `Directory.Build.props`, `reqnroll.json`, csproj и
-`appsettings.json` — и зелёный. Без ограничения объёма он искал бы все **39** записей списка
-и дал бы 37 ошибок уже на второй итерации, остановив только что начавшуюся стадию.
+`appsettings.json` — и зелёный. Без ограничения объёма он искал бы все **43** записи списка
+и дал бы 38 ошибок уже на второй итерации, остановив только что начавшуюся стадию.
 
 **Что сломается без этого.** Стадия 0 отчиталась бы о готовности с пустыми файлами:
 судья видит только изменения кода, а не то, что половина проекта — заглушки.
@@ -912,8 +925,10 @@ Windows при загрузке проекта может сменить его 
 - `entriesThroughRow(rowId)` — все записи этого шага и всех предыдущих. Для неизвестного шага
   возвращает «нет такого», **а не пустой список**: пустой выглядел бы как зелёная проверка,
   в которой просто нечего было проверять.
+- `featureSkeletonEntries(flowGroups)` — список файлов сценариев, которые должна создать
+  первая стадия; берётся из перечня потоков, поэтому новый поток попадает в него сам.
 
-**Вход / выход.** Принимает код шага. Возвращает массив записей (всего их 39).
+**Вход / выход.** Принимает код шага. Возвращает массив записей (всего их 43).
 
 **Связи.** Читается `check-scaffold.mjs`; `loop/gates.mjs` берёт отсюда перечень шагов,
 чтобы отклонить вызов с несуществующим.
@@ -921,6 +936,23 @@ Windows при загрузке проекта может сменить его 
 **Почему маркеры намеренно грубые.** Они должны ловить файл, который существует, но пуст,
 или потерял смысл существования. Маркер, оценивающий качество кода, краснел бы на каждом
 честном переписывании — а качество оценивает судья.
+
+---
+
+#### `invariants.mjs` — свойства всего проекта
+
+> **Простыми словами.** Правила не про один файл, а про **проект целиком**: «HTTP-клиент
+> должен быть ровно один», «должны быть вызваны все маршруты контракта».
+---
+
+#### `check-invariants.mjs` — гейт свойств проекта
+
+> **Простыми словами.** Запускает правила из соседнего файла и отвечает кодом выхода. Ровно
+> та же роль, что у `check-scaffold.mjs`, только тот спрашивает «файлы на месте?», а этот —
+> «проект в целом устроен так, как договаривались?».
+
+**Как работает.** `объём проверки` → выбрать правила, чьи файлы к этому шагу уже должны
+существовать → прогнать → напечатать по строке на правило → код выхода.
 
 ---
 
@@ -1096,9 +1128,10 @@ Windows при загрузке проекта может сменить его 
 
 **Ключевые функции**
 
-- `MUTATIONS` — четыре поломки. Каждая описывает, что портит и какие критерии обязаны упасть.
-  Все ограничены запросами чтения: поломка, задевшая удаление, оставила бы записи в базе, и
-  это вылезло бы через час как падение совсем другого теста.
+- `MUTATIONS` — шесть поломок. Каждая описывает, что портит и какие критерии обязаны упасть.
+  Четыре ограничены запросами чтения: поломка, задевшая удаление, оставила бы записи в базе,
+  и это вылезло бы через час как падение совсем другого теста. Две последние — исключение с
+  оговоркой, см. ниже.
 - `PASSTHROUGH` — поломка, которая ничего не портит. Это контроль **самого контроля**.
 - `applyMutation(mutation, exchange)` — чистая функция: получает ответ приложения, возвращает
   испорченный.
@@ -1106,6 +1139,12 @@ Windows при загрузке проекта может сменить его 
   какие именно критерии названы. Оба нужны: если изменится формат имён тестов, список
   критериев станет пустым — а это выглядит ровно как «поломку не заметили».
 - `gradeMutation(...)` — приговор по одной поломке.
+
+**Поломка обязана доказать не только «покраснело», но и «как покраснело».** У части поломок
+есть блок `proves` — утверждения, которые должны найтись в выводе тестов; не найденное
+считается **недоказанным**, никогда «выполненным по умолчанию». Так проверяются два свойства
+самого фреймворка: что отчёт отличает сломанную подготовку от невыполненного критерия и что в
+сообщении назван неудавшийся запрос.
 - `startProxy(...)` — поднимает реле. Имеет собственный обработчик ошибки занятого порта: без
   него скрипт падал стек-трейсом и зависал.
 - `runSuite(baseUrl)` — запускает тесты **асинхронно**. Это не стиль, а необходимость: реле
@@ -1126,7 +1165,7 @@ Windows при загрузке проекта может сменить его 
 использует — это инструмент оператора, а не шаг цикла.
 
 **Пример.** Поломка «убрать поле `name` из ответа о питомце»: базовый и сквозной прогоны
-зелёные, дальше падает **7 тестов из 23** — ровно те, что обращаются к карточке питомца, а
+зелёные, дальше падает **7 тестов из 33** — ровно те, что обращаются к карточке питомца, а
 все тесты о владельцах остаются зелёными. Пропорциональный радиус и есть признак настоящего
 попадания.
 
@@ -1161,7 +1200,7 @@ Windows при загрузке проекта может сменить его 
 **Вход / выход.** Принимает переменные окружения от цикла. Печатает текст, становящийся
 началом контекста агента.
 
-**Пример справки.** «ветка `feat/api-tests`, дерево чистое, 19 закрыто / 1 не начато, 88
+**Пример справки.** «ветка `feat/api-tests`, дерево чистое, 19 закрыто / 1 не начато, 98
 шагов существует» — и дальше несколько последних заметок.
 
 **Что сломается без этого.** Каждый проход начинал бы с нуля: не знал бы, что уже сделано, и
@@ -1191,7 +1230,7 @@ Windows при загрузке проекта может сменить его 
 **`framework/`** — выход. Сгенерированный тестовый проект: сценарии, step definitions,
 HTTP-слой, модели, тестовые данные, уборка за собой.
 
-**`tests/`** — 554 теста **самого механизма**. Интереснейший запускает настоящий цикл во
+**`tests/`** — 665 тестов **самого механизма**. Интереснейший запускает настоящий цикл во
 временной копии репозитория, подставив вместо платного ИИ заглушку — и **доказывает**, что
 это именно заглушка, сверяя файл по системному идентификатору. То есть тест не может случайно
 потратить деньги.
@@ -1277,18 +1316,20 @@ HTTP-слой, модели, тестовые данные, уборка за с
 бесплатные проверки.
 
 Те же файлы на стадии 0 работают в чуть ином составе: вместо `check-tests.mjs` —
-`check-scaffold.mjs` со списком из `manifest.scaffold.mjs`, вместо `PROMPT.tests.md` и
-`rubrics/tests.md` — их версии для построения фреймворка. Каркас цикла тот же.
+`check-scaffold.mjs` со списком из `manifest.scaffold.mjs` **и** `check-invariants.mjs` с
+правилами из `invariants.mjs`, вместо `PROMPT.tests.md` и `rubrics/tests.md` — их версии для
+построения фреймворка. Каркас цикла тот же.
 
 ---
 
 ## 8. Как это запустить
 
 ```bash
-npm test                                   # 554 теста механизма — бесплатно
+npm test                                   # 665 тестов механизма — бесплатно
 npm run ralph -- --dry-run --stage tests   # что сделал бы цикл — 0 токенов
 npm run sut -- ensure                      # поднять приложение под тестом
 npm run api:test                           # прогнать сгенерированные тесты
+npm run check:invariants                   # свойства всего проекта — бесплатно, мгновенно
 npm run control                            # доказать, что тесты способны упасть — бесплатно, долго
 npm run eval:judge -- --dry-run            # собрать экзамен, ничего не тратя
 ```
@@ -1315,6 +1356,8 @@ npm run eval:judge -- --dry-run            # собрать экзамен, ни
 | **Судья** | Второй ИИ, оценивающий работу. Только читает, ничего не меняет | judge, `JUDGE_CMD`, правила в `loop/rubrics/` |
 | **Правила судьи** | Пронумерованный список того, что он обязан проверить | rubric, `loop/rubrics/tests.md` |
 | **Гейт** | Набор автоматических проверок вокруг прохода: сборка, тесты, шаблоны | gate, `loop/gates.mjs` |
+| **Инвариант** | Свойство **всего проекта**, а не одного изменения: «клиент ровно один», «вызваны все маршруты». Судье такое не видно — ему показывают один проход | invariant, `scripts/invariants.mjs` |
+| **Отчёт прогона** | Таблица всех проходов одного запуска с вердиктами, временем и стоимостью обеих сторон | run report, `loop/runs/*.md` |
 | **Трекер** | Список задач в виде таблицы; его статусы — состояние всего цикла | tracker, `loop/trackers/` |
 | **Поток** | Группа связанных критериев — одна пользовательская история | flow, `F-01` / `F-02` / `F-03` |
 | **Сценарий** | Тест, записанный шагами на доменном языке | `Scenario:` в файлах `*.feature` |
@@ -1334,8 +1377,8 @@ npm run eval:judge -- --dry-run            # собрать экзамен, ни
 к показателю прогресса, ни к самоотчёту того, кого оценивает.
 
 Результат измеряемый, а не декларируемый: 20 критериев закрыты, тесты доказанно способны
-падать, судья доказанно ловит дефекты, а каждый прогон оставляет после себя отчёт, с
-которым можно сравнить следующий.
+падать, судья доказанно ловит дефекты, а каждый прогон оставляет после себя отчёт — с
+вердиктом, временем и ценой каждого прохода, — с которым можно сравнить следующий.
 
 ---
 ---
@@ -1361,7 +1404,7 @@ descriptions of what the system must do. For example:
 
 To check that automatically, a test automation engineer (SDET) has to turn every criterion into
 an **API integration test**: stand up a test framework, write the scenario, write the assertions,
-clean up the data afterwards. For twenty criteria that is roughly **8–11 working days**.
+clean up the data afterwards.
 
 The work is repetitive: the same ritual twenty times over with different particulars. That is
 exactly the kind of task an AI does well — and exactly the kind where it most easily fools
@@ -1408,18 +1451,18 @@ Not a plan — measurements from a real run.
 
 | Measure | Value |
 |---|---|
-| Files in the test project | **42** |
-| Lines of C# | **2,742** |
+| Files in the test project | **52** |
+| Lines of C# | **3,363** |
 | BDD scenarios | **20** (one per criterion) |
-| Tests in a run | **23** (20 scenarios + 3 smoke) |
-| Step definitions (distinct steps backed by code) | **88** |
-| How often those steps are used across the 20 scenarios | **279** |
-| Assertions in the code | **138** |
-| Assertions with a human-readable failure message | **138 of 138** |
+| Tests in a run | **33** (20 scenarios + a canary + 3 smoke + 9 unit) |
+| Step definitions (distinct steps backed by code) | **98** |
+| How often those steps are used across the 20 scenarios | **282** |
+| Assertions in the code | **157** |
+| Assertions with a human-readable failure message | **157 of 157** |
 
 Two rows of that table are worth a word of their own.
 
-**279 usages over 88 step definitions.** A scenario is made of **steps** — lines in plain
+**282 usages over 98 step definitions.** A scenario is made of **steps** — lines in plain
 language:
 
 ```gherkin
@@ -1433,38 +1476,29 @@ live in the `StepDefinitions/` folder.
 
 The important part is that they are **reused**. `an owner is registered` is used by all 20
 scenarios; `a pet is added to the owner` by 16. So the 20 tests are assembled from a shared
-vocabulary of 88 steps rather than each carrying its own private code.
+vocabulary of 98 steps rather than each carrying its own private code.
 
 What that buys you: if the way an owner is registered ever changes, you fix it **in one
 place** and all 20 tests follow. Had every scenario carried its own copy, that would be 20
 edits and 20 chances to miss one.
 
-**138 assertions out of 138 with a human explanation.** When a test fails it does not say
+**157 assertions out of 157 with a human explanation.** When a test fails it does not say
 "expected True, got False" — it says "pet id 42 should have kept the birth date that was
 submitted". The difference is half an hour of investigation versus ten seconds.
 
-### What it cost in turns
-
-| Stage | Tasks | Turns |
-|---|---|---|
-| Building the framework | 14 | 21 |
-| Generating the tests | 20 | 26 (the journal records 19 of the 20 criteria) |
-
-**13 criteria were closed on the first attempt, 6 needed a second or a third.** So roughly
-every third criterion went through rework — and that is a healthy number: it means the judge
-is genuinely working rather than rubber-stamping.
 
 ### Can these results be trusted
 
-Three independent checks, and all three were actually run:
+Four independent checks, and all four were actually run:
 
 | Check | Result |
 |---|---|
-| **Negative control** — the application is deliberately broken, the tests must go red | **4 of 4** breakages caught; 4–7 tests of 23 failed, exactly the ones touching the broken field |
+| **Negative control** — the application is deliberately broken, the tests must go red | **6 of 6** breakages caught; between 4 and 23 tests of 33 failed, exactly the ones touching the broken place |
+| **Whole-project invariants** — properties no single change can reveal | **7 of 7** |
 | **Judge exam** — 10 examples whose correct grade is known in advance | **10 of 10**; no defect missed, no good work rejected |
-| **Tests of the harness itself** | **554**, all green |
+| **Tests of the harness itself** | **665**, all green |
 
-The negative control is the most important of the three. It answers the question no amount of
+The negative control is the most important of the four. It answers the question no amount of
 reading the code can settle: **are these tests capable of failing at all?** They are — and
 precisely where they should.
 
@@ -1545,29 +1579,41 @@ The central architectural decision of the whole system is the **boundary** betwe
 be checked mechanically and what requires judgement.
 
 ```
-  ┌──────────────────────────────┐   ┌──────────────────────────────┐
-  │  MACHINE                     │   │  AI JUDGE                    │
-  │  free, same answer           │   │  costs money, exercises      │
-  │  every time                  │   │  judgement                   │
-  ├──────────────────────────────┤   ├──────────────────────────────┤
-  │ • does the project build     │   │ • does EVERY claim of the    │
-  │ • are all tests green        │   │   criterion have an assertion│
-  │ • were only the allowed      │   │ • is there an assertion that │
-  │   folders touched            │   │   cannot fail                │
-  │ • is the required tag there  │   │ • was an assertion weakened  │
-  │ • does the title match       │   │   to get a green result      │
-  │   word for word              │   │ • is a new step genuinely    │
-  │ • does the data live in JSON │   │   new, not a reword          │
-  │ • nothing forbidden:         │   │ • does a change to a shared  │
-  │   literal id, sleep,         │   │   step break already         │
-  │   disabled test              │   │   accepted tests             │
-  │ • exactly one scenario       │   │                              │
-  └──────────────────────────────┘   └──────────────────────────────┘
-                 │                                  │
-                 └──────────┬───────────────────────┘
-                            ▼
-                a row closes ONLY when both
-                halves have said yes
+  ┌────────────────────────────────┐   ┌────────────────────────────────┐
+  │  MACHINE                       │   │  AI JUDGE                      │
+  │  free, same answer             │   │  costs money, exercises        │
+  │  every time                    │   │  judgement                     │
+  ├────────────────────────────────┤   ├────────────────────────────────┤
+  │ About the turn itself:         │   │ • does EVERY claim of the      │
+  │ • does the project build       │   │   criterion have an assertion  │
+  │ • are all tests green          │   │ • is there an assertion that   │
+  │ • were only allowed folders    │   │   cannot fail                  │
+  │   touched                      │   │ • was an assertion weakened    │
+  │ • is the required tag there    │   │   to get a green result        │
+  │ • does the title match         │   │ • is a new step genuinely      │
+  │ • does the data live in JSON   │   │   new, not a reword            │
+  │ • exactly one scenario         │   │ • does the scenario read as a  │
+  │ • nothing forbidden: literal   │   │   description of behaviour     │
+  │   id, sleep, disabled test     │   │   rather than a retelling of   │
+  │                                │   │   requests                     │
+  │ About the shape of the test:   │   │                                │
+  │ • every When has its own Then  │   │                                │
+  │ • every request ends in a      │   │                                │
+  │   status-code check            │   │                                │
+  │                                │   │                                │
+  │ About the whole project:       │   │                                │
+  │ • exactly one HTTP client      │   │                                │
+  │ • no literal hosts or ports    │   │                                │
+  │ • every route of the contract  │   │                                │
+  │   is called, and only those    │   │                                │
+  │ • no step sentence is bound    │   │                                │
+  │   twice                        │   │                                │
+  └────────────────────────────────┘   └────────────────────────────────┘
+                   │                                    │
+                   └─────────────────┬──────────────────┘
+                                     ▼
+                       a row closes ONLY when both
+                       halves have said yes
 ```
 
 The rule is simple: **anything a pattern can settle never reaches the judge.** A pattern gives
@@ -1631,7 +1677,7 @@ approval.
 | `loop/` | **the brain** | The loop itself, the instructions for both AIs, the task list |
 | `scripts/` | **the machinery** | Automatic checks and maintenance tools |
 | `framework/` | **output** | The generated C# test project |
-| `tests/` | **insurance** | 554 tests of the harness itself (not to be confused with `framework/`) |
+| `tests/` | **insurance** | 665 tests of the harness itself (not to be confused with `framework/`) |
 | `.claude/` | **wiring** | Memory between turns, and limits on what the agent may do |
 
 ---
@@ -1721,6 +1767,9 @@ exam grades **the same** judge the loop actually runs.
 and two AI commands naming **pinned** model ids — so a run a month from now can be compared
 with today's.
 
+**Why the agent is invoked in streaming mode.** The ordinary mode gives you live output or
+usage figures — the stream gives both.
+
 ---
 
 #### `tracker.mjs` — the task list
@@ -1786,6 +1835,8 @@ until the first failure.
   scenario" would be red by construction.
 - `runGate(steps, { root, run })` — runs the list and **stops at the first failure**: running
   tests after a failed build only produces a second, less informative error.
+- `skipPreGate(...)` — whether what was just proven needs proving again: nothing moved since
+  the last green gate. It answers "no" to everything it is not certain about.
 
 **Why the steps are data rather than code.** Because then their **order** can be unit-tested.
 And the order is load-bearing: the database is reset before the tests, because only then does
@@ -1795,7 +1846,7 @@ a red test mean "this test is wrong" rather than "the last run left rubbish behi
 args }` — with no side effects at all.
 
 **Connections.** Read by `ralph.mjs`. The steps refer to `sut.mjs`, `check-tests.mjs`,
-`check-scaffold.mjs`, `steps-inventory.mjs` and `dotnet`.
+`check-scaffold.mjs`, `check-invariants.mjs`, `steps-inventory.mjs` and `dotnet`.
 
 **Example (tests stage, after a turn).** reset the database → build → run every test →
 `check-tests.mjs` with the reference point → regenerate the step catalogue.
@@ -1893,24 +1944,30 @@ append a line to the report → append totals at the end.
   verdict parser and it reads the opening brace and answers `REJECT` — **every time**. So the
   envelope is unwrapped here, before parsing. Any other tool that answers in plain text passes
   through unchanged.
+- `parseAgentUsage(stdout)` — the same for the agent. It answers as a **stream**: one JSON
+  object per line, as the turn runs. The usage sits in the last one.
 - `addUsage(a, b)` — adds usage records, handling missing numbers correctly.
 - `summaryRow(...)`, `summaryTotals(...)` — a table row and the totals block.
 - `usageLine(usage)` — all four usage numbers separately, because they are **priced
   differently**.
 - `cell(text)` — reduces any text to something safe to put in a table cell.
 
-**What counts as cost.** The **judge's** usage is recorded. The **agent's** is not, and that
-is a deliberate limitation: its output is shown live so a human can watch the turn, and the
-mode that would report usage takes that away. Turn count and wall clock stand in for it.
+**What counts as cost.** **Both** sides, in separate columns, plus the turn's total. The agent
+answers as a stream — lines print as the work happens, the last one carries the figures — so
+watching a turn and pricing it are no longer mutually exclusive.
 
-**Input / output.** Takes the judge's reply and the turn's data. Creates a report file in
+**Input / output.** Takes both AI replies and the turn's data. Creates a report file in
 `loop/runs/`.
 
-**Connections.** Called by `ralph.mjs` after every turn; `usageLine` is also used by
-`eval-judge.mjs`.
+**Connections.** Called by `ralph.mjs` after every turn; `parseAgentUsage` also from
+`invoke.mjs`, `usageLine` from `eval-judge.mjs`.
 
 **Example from a real run.**
-`| 1 | AC-F01-03 | agent | judged | PASS | 83556 (+275k cached) | 4909 | $1.0958 | 381 s |`
+`| 1 | AC-F03-01 | agent | judged | PASS | 89962 (+353k) | 8622 | $1.2916 | 155884 (+2761k) | 15009 | $1.9837 | $3.2753 | 485 |`
+
+Judge usage on the left, agent's on the right, then the turn's total and its wall clock. The
+"$3.6 per criterion" and "1.2–1.33 turns per criterion" figures in section 2 are built from
+exactly these rows.
 
 ---
 
@@ -2109,6 +2166,13 @@ hits with line numbers.
 - `literalIdsInFeature`, `literalIdsInData` — the same for the scenario file and the data file,
   where the same mistakes look different.
 - `forbiddenApis(source)` — sleeps and test switches.
+- `whenWithoutThen(feature)` — a request was made and nobody looked at the result. It also
+  catches the reverse: two requests answered by a single check. A walk over the lines rather
+  than a regex, because `And` continues whichever keyword opened the block.
+- `uncheckedServiceCalls(sources)` — calls to the application whose status code is never
+  checked. Reads a whole method body: the call and the check may legitimately be two separate
+  statements. Beside it, `callsAnyService` tests the premise — with no such calls in the
+  project at all, the rule says "did not look" instead of an unearned green line.
 - `scenarioTags`, `scenarioTitles`, `scenarioOutlines`, `malformedAcTags`,
   `foreignLanguageHeader` — parsing of the scenario file.
 - `excludings(source)` — **not a check, but data collection**: it finds places where an object
@@ -2218,8 +2282,8 @@ the name's case right? → is it a file? → over 40 bytes? → does it contain 
 
 **Example.** Wave 1 is built. The gate with `--through-row S1` checks only the **five** entries
 of that step — the solution file, `Directory.Build.props`, `reqnroll.json`, the csproj and
-`appsettings.json` — and is green. Without a scope it would look for all **39** entries and
-report 37 problems on the second iteration, stopping a stage that had just begun.
+`appsettings.json` — and is green. Without a scope it would look for all **43** entries and
+report 38 problems on the second iteration, stopping a stage that had just begun.
 
 **What breaks without it.** Stage 0 would report success with empty files: the judge sees only
 the code change, not that half the project is placeholders.
@@ -2240,8 +2304,11 @@ found inside the file.
 - `entriesThroughRow(rowId)` — every entry of that step and all steps before it. For an unknown
   step it returns "no such thing", **not an empty list**: an empty list would look like a green
   check that simply had nothing to check.
+- `featureSkeletonEntries(flowGroups)` — the scenario-file skeletons are **derived** from the
+  list of flows rather than written by hand, so a fourth flow becomes a first-stage requirement
+  by itself.
 
-**Input / output.** Takes a step id. Returns an array of entries (39 in total).
+**Input / output.** Takes a step id. Returns an array of entries (43 in total).
 
 **Connections.** Read by `check-scaffold.mjs`; `loop/gates.mjs` takes the list of steps from
 here so it can refuse a call naming one that does not exist.
@@ -2249,6 +2316,24 @@ here so it can refuse a call naming one that does not exist.
 **Why the markers are deliberately coarse.** They must catch a file that exists but is empty,
 or has lost its whole reason for existing. A marker that tried to judge code quality would go
 red on every honest rewrite — and quality is the judge's job.
+
+---
+
+#### `invariants.mjs` — properties of the whole project
+
+> **In plain words.** Rules not about one file but about the **whole project**: "there must be
+> exactly one HTTP client", "every route of the contract must be called".
+
+---
+
+#### `check-invariants.mjs` — the gate for project properties
+
+> **In plain words.** Runs the rules from the file next door and answers with an exit code.
+> Exactly the role `check-scaffold.mjs` plays, except that one asks "are the files there?" and
+> this one asks "is the project as a whole built the way we agreed?".
+
+**How it works.** `scope` → select the rules whose files should already exist by that step →
+run them → print one line per rule → exit code.
 
 ---
 
@@ -2423,9 +2508,10 @@ reset the database at the end
 
 **Key functions**
 
-- `MUTATIONS` — four breakages. Each describes what it damages and which criteria must fail.
-  All are limited to read requests: a breakage that touched deletion would leave records in the
-  database, and that would surface an hour later as an unrelated test failing.
+- `MUTATIONS` — six breakages. Each describes what it damages and which criteria must fail.
+  Four are limited to read requests: a breakage that touched deletion would leave records in the
+  database, and that would surface an hour later as an unrelated test failing. The last two are
+  the deliberate exception — see below.
 - `PASSTHROUGH` — a breakage that damages nothing. This is the control's own control.
 - `applyMutation(mutation, exchange)` — a pure function: it takes the application's response
   and returns the damaged one.
@@ -2433,6 +2519,12 @@ reset the database at the end
   total, and which criteria were named. Both are needed: if the test-name format ever changes,
   the list of criteria goes empty — and that looks exactly like "the breakage went unnoticed".
 - `gradeMutation(...)` — the verdict for one breakage.
+
+**A breakage must demonstrate not only "it went red" but "how it went red".** Some breakages
+carry a `proves` block — claims that must be found in the test output; one that is not found
+counts as **unproven**, never as satisfied by default. That is how two properties of the
+framework get checked: that the report tells a broken precondition apart from an unmet
+criterion, and that the failing request is named in the message.
 - `startProxy(...)` — starts the relay. It has its own handler for a busy port: without one the
   script died with a stack trace and hung.
 - `runSuite(baseUrl)` — runs the tests **asynchronously**. That is not style but necessity: the
@@ -2453,7 +2545,7 @@ runs. A non-zero exit code if any breakage went unnoticed.
 Uses nothing from `loop/` — this is an operator's tool, not a step of the cycle.
 
 **Example.** The breakage "remove the `name` field from the pet response": the baseline and
-passthrough runs are green, then **7 tests of 23** fail — exactly those that open the pet's
+passthrough runs are green, then **7 tests of 33** fail — exactly those that open the pet's
 record, while every owner test stays green. A proportionate blast radius is what a real catch
 looks like.
 
@@ -2489,7 +2581,7 @@ read the tail of the notes → print the briefing.
 **Input / output.** Takes environment variables from the loop. Prints text that becomes the
 start of the agent's context.
 
-**Example briefing.** "branch `feat/api-tests`, tree clean, 19 closed / 1 not started, 88 steps
+**Example briefing.** "branch `feat/api-tests`, tree clean, 19 closed / 1 not started, 98 steps
 exist" — followed by the last few notes.
 
 **What breaks without it.** Every turn would start from nothing: it would not know what has
@@ -2518,7 +2610,7 @@ file (the mandatory rules for writing tests) and the API contract.
 **`framework/`** — the output. The generated test project: scenarios, step definitions, the
 HTTP layer, models, test data, cleanup after itself.
 
-**`tests/`** — 554 tests of **the harness itself**. The most interesting one runs the real loop
+**`tests/`** — 665 tests of **the harness itself**. The most interesting one runs the real loop
 inside a temporary copy of the repository with a stub standing in for the paid AI — and
 **proves** it is the stub by comparing the file's system identifier. So the test cannot spend
 money by accident.
@@ -2605,18 +2697,20 @@ judge: there is no other road in.
 free check.
 
 The same files work in a slightly different cast during stage 0: `check-scaffold.mjs` with the
-list from `manifest.scaffold.mjs` instead of `check-tests.mjs`, and the framework-building
-versions of the prompt and the rules. The skeleton of the loop is the same.
+list from `manifest.scaffold.mjs` **and** `check-invariants.mjs` with the rules from
+`invariants.mjs`, instead of `check-tests.mjs`; and the framework-building versions of the
+prompt and the rules. The skeleton of the loop is the same.
 
 ---
 
 ## 8. How to run it
 
 ```bash
-npm test                                   # 554 harness tests — free
+npm test                                   # 665 harness tests — free
 npm run ralph -- --dry-run --stage tests   # what the loop would do — 0 tokens
 npm run sut -- ensure                      # start the application under test
 npm run api:test                           # run the generated tests
+npm run check:invariants                   # whole-project properties — free, instant
 npm run control                            # prove the tests can fail — free, slow
 npm run eval:judge -- --dry-run            # assemble the exam, spending nothing
 ```
@@ -2643,6 +2737,8 @@ engineers and the folder holding it name it.
 | **Judge** | The second AI that grades the work. Reads only, changes nothing | judge, `JUDGE_CMD`, rules in `loop/rubrics/` |
 | **The judge's rules** | The numbered list of what it must check | rubric, `loop/rubrics/tests.md` |
 | **Gate** | The set of automatic checks around a turn: build, tests, patterns | gate, `loop/gates.mjs` |
+| **Invariant** | A property of the **whole project** rather than one change: "exactly one client", "every route is called". The judge cannot see these — it is shown one turn | invariant, `scripts/invariants.mjs` |
+| **Run report** | The table of every turn in one run, with verdicts, wall clock and the cost of both sides | run report, `loop/runs/*.md` |
 | **Tracker** | The task list as a table; its statuses are the state of the whole loop | tracker, `loop/trackers/` |
 | **Flow** | A group of related criteria — one user journey | flow, `F-01` / `F-02` / `F-03` |
 | **Scenario** | A test written as steps in domain language | `Scenario:` in `*.feature` files |
@@ -2662,5 +2758,6 @@ checks facts and a second model that judges against written rules — with acces
 progress metric nor to the self-report of the party it is grading.
 
 The result is measured rather than asserted: 20 criteria closed, the tests demonstrably capable
-of failing, the judge demonstrably catching defects, and every run leaving behind a report the
-next one can be compared against.
+of failing, the judge demonstrably catching defects, and every run leaving behind a report —
+with the verdict, the wall clock and the price of each turn — that the next one can be compared
+against.
