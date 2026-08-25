@@ -130,6 +130,13 @@ test('the default judge command asks for the output format its usage is read fro
   assert.match(stageConfig('tests', {}).judgeCmd, /--output-format json/);
 });
 
+test('the default agent command asks for the format its cost can be read from', () => {
+  const { agentCmd } = stageConfig('tests', {});
+  assert.match(agentCmd, /--output-format stream-json/);
+  assert.match(agentCmd, /--verbose/, 'the CLI requires it for this format under --print');
+  assert.match(agentCmd, /claude-sonnet-5/, 'the model stays pinned by id, not by an alias');
+});
+
 test('stageConfig lets env override both commands', () => {
   const config = stageConfig('tests', { AGENT_CMD: 'codex exec', JUDGE_CMD: 'copilot -p' });
   assert.equal(config.agentCmd, 'codex exec');

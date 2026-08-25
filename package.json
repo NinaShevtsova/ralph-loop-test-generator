@@ -13,6 +13,7 @@
     "sut": "node scripts/sut.mjs",
     "check:scaffold": "node scripts/check-scaffold.mjs",
     "check:tests": "node scripts/check-tests.mjs",
+    "check:invariants": "node scripts/check-invariants.mjs",
     "check:spec": "node .claude/skills/spec-builder/check-spec.mjs",
     "eval:judge": "node scripts/eval-judge.mjs",
     "control": "node scripts/mutation-control.mjs",

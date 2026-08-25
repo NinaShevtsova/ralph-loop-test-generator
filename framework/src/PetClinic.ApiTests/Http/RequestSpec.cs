@@ -2,6 +2,9 @@ using PetClinic.ApiTests.Config;
 
 namespace PetClinic.ApiTests.Http;
 
+// REUSABLE REQUEST SPECIFICATION (design §4): base URL, default headers and timeout, shared by
+// every request the framework issues. Immutable so a service cannot mutate it out from under
+// another one sharing the same ApiClient.
 public sealed class RequestSpec
 {
     public string BaseUrl { get; }
@@ -18,5 +21,5 @@ public sealed class RequestSpec
     }
 
     public static RequestSpec Default(TestSettings settings) =>
-        new(settings.BaseUrl, "application/json", "application/json", settings.TimeoutMs);
+        new(settings.BaseUrl, contentType: "application/json", accept: "application/json", settings.TimeoutMs);
 }

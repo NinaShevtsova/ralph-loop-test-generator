@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace PetClinic.ApiTests.Models;
 
-public class Owner
+public sealed class Owner
 {
     [JsonPropertyName("id")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -23,6 +23,10 @@ public class Owner
     [JsonPropertyName("telephone")]
     public string Telephone { get; set; } = string.Empty;
 
+    // Nullable and omitted-when-null, same reasoning as `Pet.Visits`: §7 lists `pets` as a read-only
+    // response field, so a request body (POST /owners, PUT /owners/{ownerId}) must be able to omit it
+    // rather than send `"pets": []`.
     [JsonPropertyName("pets")]
-    public List<Pet> Pets { get; set; } = new();
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Pet>? Pets { get; set; }
 }

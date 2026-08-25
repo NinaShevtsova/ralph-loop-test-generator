@@ -1,84 +1,54 @@
-using RestSharp;
 using PetClinic.ApiTests.Config;
-
-using System.Linq;
+using RestSharp;
 
 namespace PetClinic.ApiTests.Http;
 
+// Owns the ONE RestClient for the whole run. No service, step or test may `new RestClient` — every
+// call goes through ApiClient.Shared, which is what keeps the connection pool, base URL and timeout
+// in exactly one place.
 public sealed class ApiClient
 {
-    private readonly RestClient _restClient;
-    private readonly RequestSpec _spec;
+    private readonly RestClient _client;
 
-    private ApiClient(RestClient restClient, RequestSpec spec)
+    private ApiClient(RequestSpec spec)
     {
-        _restClient = restClient;
-        _spec = spec;
-    }
-
-    public static ApiClient Shared { get; } = Create(SettingsLoader.Load());
-
-    private static ApiClient Create(TestSettings settings)
-    {
-        var spec = RequestSpec.Default(settings);
-        var options = new RestClientOptions(spec.BaseUrl)
+        Spec = spec;
+        _client = new RestClient(new RestClientOptions(spec.BaseUrl)
         {
             Timeout = TimeSpan.FromMilliseconds(spec.TimeoutMs),
-        };
-        return new ApiClient(new RestClient(options), spec);
-    }
-
-    public async Task<ApiResponse<T>> Get<T>(string path, Action<RequestSpecBuilder>? configure = null)
-    {
-        var request = BuildRequest(Method.Get, path, configure);
-        var response = await _restClient.ExecuteAsync<T>(request);
-        return ToTypedResponse(response);
-    }
-
-    public async Task<ApiResponse<T>> Post<T>(string path, object body, Action<RequestSpecBuilder>? configure = null)
-    {
-        var request = BuildRequest(Method.Post, path, builder =>
-        {
-            builder.WithBody(body);
-            configure?.Invoke(builder);
         });
-        var response = await _restClient.ExecuteAsync<T>(request);
-        return ToTypedResponse(response);
     }
 
-    public async Task<ApiResponse> Put(string path, object body, Action<RequestSpecBuilder>? configure = null)
+    public static ApiClient Shared { get; } = new(RequestSpec.Default(SettingsLoader.Load()));
+
+    // The spec this client was configured from, kept as the single instance every request is built
+    // from — a service builds its requests via NewRequest rather than re-loading settings itself.
+    public RequestSpec Spec { get; }
+
+    public RequestSpecBuilder NewRequest(Method method) => new(Spec, method);
+
+    public Task<ApiResponse<T>> GetAsync<T>(RestRequest request) => ExecuteAsync<T>(request);
+
+    public Task<ApiResponse<T>> PostAsync<T>(RestRequest request) => ExecuteAsync<T>(request);
+
+    // PUT and DELETE answer 204 with an empty body (§7 of context-and-conventions.md) — the caller
+    // verifies the result with a subsequent GET, so these return no typed body to deserialize.
+    public Task<ApiResponse<object?>> PutAsync(RestRequest request) => ExecuteAsync<object?>(request);
+
+    public Task<ApiResponse<object?>> DeleteAsync(RestRequest request) => ExecuteAsync<object?>(request);
+
+    private async Task<ApiResponse<T>> ExecuteAsync<T>(RestRequest request)
     {
-        var request = BuildRequest(Method.Put, path, builder =>
-        {
-            builder.WithBody(body);
-            configure?.Invoke(builder);
-        });
-        var response = await _restClient.ExecuteAsync(request);
-        return ToResponse(response);
+        var response = await _client.ExecuteAsync<T>(request);
+
+        // The resolved URL when RestSharp reports one, the template otherwise. Both were already here
+        // and both were thrown away, which is why every failure message named no route.
+        var resource = response.ResponseUri?.ToString() ?? request.Resource;
+        return new ApiResponse<T>(
+            response.StatusCode,
+            response.Data,
+            response.Content,
+            response.Headers,
+            new RequestContext(request.Method, resource));
     }
-
-    public async Task<ApiResponse> Delete(string path, Action<RequestSpecBuilder>? configure = null)
-    {
-        var request = BuildRequest(Method.Delete, path, configure);
-        var response = await _restClient.ExecuteAsync(request);
-        return ToResponse(response);
-    }
-
-    private RestRequest BuildRequest(Method method, string path, Action<RequestSpecBuilder>? configure)
-    {
-        var builder = new RequestSpecBuilder(_spec, method).WithPath(path);
-        configure?.Invoke(builder);
-        return builder.Build();
-    }
-
-    private static ApiResponse ToResponse(RestResponse response) =>
-        new(response.StatusCode, response.Content, ToHeaderMap(response.Headers));
-
-    private static ApiResponse<T> ToTypedResponse<T>(RestResponse<T> response) =>
-        new(response.StatusCode, response.Data, response.Content, ToHeaderMap(response.Headers));
-
-    private static IReadOnlyDictionary<string, string> ToHeaderMap(IReadOnlyCollection<HeaderParameter>? headers) =>
-        (headers ?? Array.Empty<HeaderParameter>())
-            .GroupBy(h => h.Name ?? string.Empty)
-            .ToDictionary(g => g.Key, g => string.Join(", ", g.Select(h => h.Value?.ToString() ?? string.Empty)));
 }

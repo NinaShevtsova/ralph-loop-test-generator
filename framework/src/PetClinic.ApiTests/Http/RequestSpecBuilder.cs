@@ -2,12 +2,16 @@ using RestSharp;
 
 namespace PetClinic.ApiTests.Http;
 
+// Fluent factory over a RestRequest, built from the shared RequestSpec (design §4). Every service
+// method builds its request through this instead of constructing RestRequest by hand, so the
+// default Accept header is never something a call site can forget.
 public sealed class RequestSpecBuilder
 {
     private readonly RequestSpec _spec;
     private readonly Method _method;
-    private readonly Dictionary<string, string> _pathParams = new();
-    private readonly Dictionary<string, string> _queryParams = new();
+    private readonly List<(string Name, string Value)> _pathParams = new();
+    private readonly List<(string Name, string Value)> _queryParams = new();
+
     private string _path = string.Empty;
     private object? _body;
 
@@ -25,13 +29,13 @@ public sealed class RequestSpecBuilder
 
     public RequestSpecBuilder WithPathParam(string name, object value)
     {
-        _pathParams[name] = value.ToString() ?? string.Empty;
+        _pathParams.Add((name, value.ToString() ?? string.Empty));
         return this;
     }
 
     public RequestSpecBuilder WithQuery(string name, object value)
     {
-        _queryParams[name] = value.ToString() ?? string.Empty;
+        _queryParams.Add((name, value.ToString() ?? string.Empty));
         return this;
     }
 
@@ -43,10 +47,7 @@ public sealed class RequestSpecBuilder
 
     public RestRequest Build()
     {
-        var request = new RestRequest(_path, _method)
-        {
-            Timeout = TimeSpan.FromMilliseconds(_spec.TimeoutMs),
-        };
+        var request = new RestRequest(_path, _method);
         request.AddHeader("Accept", _spec.Accept);
 
         foreach (var (name, value) in _pathParams)
@@ -61,7 +62,7 @@ public sealed class RequestSpecBuilder
 
         if (_body is not null)
         {
-            request.AddJsonBody(_body);
+            request.AddJsonBody(_body, _spec.ContentType);
         }
 
         return request;

@@ -34,6 +34,9 @@ import {
   literalIdsInFeature,
   literalIdsInData,
   forbiddenApis,
+  whenWithoutThen,
+  uncheckedServiceCalls,
+  callsAnyService,
   scenarioOutlines,
   foreignLanguageHeader,
   scenarioTags,
@@ -257,6 +260,17 @@ if (!existsSync(featurePath)) {
       'Examples — §10.8 forbids it, a skipped case would be invisible in the trace'
   );
 
+  // Rubric item 4, moved out of the judge. The prompt already states the rule in a sentence and the
+  // rule was still broken on AC-F01-02, at $2.26 for the judge to say so — a request nothing asserts
+  // on is a step that cannot fail, and the gate can see that for nothing.
+  const unanswered = whenWithoutThen(feature);
+  v.check(
+    unanswered.length === 0,
+    `${flowSlug}.feature: every When is answered by a Then`,
+    `${flowSlug}.feature: ${unanswered.join('; ')} — each AC step is one When (exactly one request) ` +
+      'followed by its Then. A request whose result nothing looks at proves nothing'
+  );
+
   // The flow's Test plan table already holds the exact expected name of every test.
   const flowDoc = join(ROOT, flowDocPath(flowGroup));
   const flowText = existsSync(flowDoc) ? readFileSync(flowDoc, 'utf8') : '';
@@ -334,6 +348,17 @@ if (!existsSync(dataPath)) {
 
 // ── 4. Step definitions: no waits, no switches, no literal ids ─────────────────────
 const stepFiles = filesUnder(join(PROJECT, 'StepDefinitions'), '.cs');
+
+/*
+ * Whether the service-call rule applies here at all.
+ *
+ * The rule reads C# calling a service field — `await _owners.Create(...)`. A project whose steps call
+ * their API another way has no such call, and every file would collect a green line for a check that
+ * never looked. So the premise is tested rather than assumed, and when it does not hold the gate SAYS
+ * SO. Same shape as the `ran === 0` guard in check-invariants.mjs.
+ */
+const stepSources = stepFiles.map((file) => ({ path: rel(file), text: readFileSync(file, 'utf8') }));
+const anyServiceCalls = callsAnyService(stepSources);
 v.check(
   stepFiles.length > 0,
   `step definitions: ${stepFiles.length} file(s) found`,
@@ -357,6 +382,21 @@ for (const file of stepFiles) {
     `${rel(file)}: no waits and no disabled tests`,
     `${rel(file)}: ${forbidden.map((h) => `line ${h.line} (${h.match})`).join(', ')} — ` +
       'a wait makes a flaky test pass, and Ignore/Assert.Pass switches the test off'
+  );
+
+  // Rubric items 6 and 18, as a POSITIVE rule: every service call ends in a check. Stated this way
+  // round it cannot be satisfied by rewording an assertion, and when no service call is found the
+  // answer is "nothing to check here" rather than a pass nobody earned.
+  const unchecked = anyServiceCalls ? uncheckedServiceCalls([{ path: rel(file), text: source }]) : [];
+  v.check(
+    unchecked.length === 0,
+    anyServiceCalls
+      ? `${rel(file)}: every service call ends in Expect or EnsureStatus`
+      : `${rel(file)}: service-call checks NOT RUN — no \`await _service.Method(\` in StepDefinitions/, ` +
+        'so this rule cannot see how this project calls its API. Rubric item 6 still covers it',
+    `${rel(file)}: ${unchecked.map((h) => `${h.method}() at line ${h.line}`).join(', ')} — the response ` +
+      'code is never checked. Route it through StatusCheck.Expect so a broken precondition reports as ' +
+      'an error and an unmet criterion as a failure'
   );
 }
 

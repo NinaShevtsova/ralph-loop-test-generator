@@ -1,0 +1,21 @@
+# Line endings, declared rather than inherited from the operator's git config.
+#
+# This repository has no .gitattributes and `core.autocrlf=true` is the Windows default, so a fresh
+# checkout gives .md and .mjs files CRLF endings while every fixture in tests/ is written with \n.
+# Measured: tests/check-spec.test.mjs:719 searched for a three-line block and matched it 0 times.
+# `loop/judge-eval.mjs` already normalises CRLF by hand for exactly this reason.
+#
+# `text=auto eol=lf` checks these files out with LF on every platform. Git still stores LF either way,
+# so this changes the working tree, not history.
+*.md    text eol=lf
+*.mjs   text eol=lf
+*.json  text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+
+# The C# project is edited in Visual Studio on Windows; leave it to the platform default.
+*.cs        text
+*.csproj    text
+*.sln       text
+*.props     text
+*.feature   text

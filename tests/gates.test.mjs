@@ -2,15 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { gateSteps, preGateSteps } from '../loop/gates.mjs';
-
-test('the scaffold gate runs the manifest check, then build, then reset and test', () => {
-  const steps = gateSteps('scaffold', { acId: 'S1', row: 'S1' });
-  assert.deepEqual(
-    steps.map((step) => step.name),
-    ['check:scaffold', 'dotnet build', 'sut reset', 'dotnet test']
-  );
-});
+import { gateSteps, preGateSteps, skipPreGate } from '../loop/gates.mjs';
 
 test('the tests gate resets the SUT first and runs the whole suite', () => {
   const steps = gateSteps('tests', { acId: 'AC-F02-01' });
@@ -141,8 +133,6 @@ test('the scaffold pre-gate checks through the PREVIOUS wave, not the target one
   assert.deepEqual(steps.map((step) => step.name), [
     'check:scaffold (through the previous wave)',
     'dotnet build',
-    'sut reset',
-    'dotnet test',
   ]);
   // wave - 1. Several rows share a wave, so while any row of wave 5 is open, 1..4 are the complete
   // ones. Asking through 5 would demand the files this turn is about to create.
@@ -169,7 +159,7 @@ test('the two gates scope the same wave differently, and that is the point', () 
 
 test('the scaffold pre-gate has no manifest check at all before wave 1', () => {
   const steps = preGateSteps('scaffold', { wave: 1 });
-  assert.deepEqual(steps.map((step) => step.name), ['dotnet build', 'sut reset', 'dotnet test']);
+  assert.deepEqual(steps.map((step) => step.name), ['dotnet build']);
   assert.ok(
     !steps.some((step) => step.args?.includes('--through-wave')),
     'wave 1 creates the solution — there is no earlier wave to check, and `--through-wave 0` would be a lie'
@@ -202,4 +192,97 @@ test('every pre-gate step names a command and an argument array', () => {
       assert.ok(Array.isArray(step.args), `${step.name} must carry an argument array`);
     }
   }
+});
+
+// ── The scaffold gate runs only the steps that can say something (design 2026-08-20 §7.1) ──
+
+test('a scaffold row before the smoke suite gets no SUT reset and no test run', () => {
+  // Tests appear only in the last row of the stage. Before it, `dotnet test` reports zero tests --
+  // the stage-0 prompt calls that a pass -- and `sut reset` restarts Docker to make that possible.
+  const steps = gateSteps('scaffold', { row: 'S6' }).map((step) => step.name);
+  assert.deepEqual(steps, ['check:scaffold', 'dotnet build', 'check:invariants']);
+});
+
+test('the row that builds the smoke suite gets the SUT reset and the whole suite, in that order', () => {
+  // D-09: the reset comes BEFORE the run, so a red test means "the test is bad" and not "the database
+  // is dirty". The order is the reason these steps are declared as data.
+  const steps = gateSteps('scaffold', { row: 'S14' }).map((step) => step.name);
+  assert.deepEqual(steps, ['check:scaffold', 'dotnet build', 'check:invariants', 'sut reset', 'dotnet test']);
+});
+
+test('the first scaffold row runs neither unit tests nor the suite — neither exists yet', () => {
+  const steps = gateSteps('scaffold', { row: 'S1' }).map((step) => step.name);
+  assert.deepEqual(steps, ['check:scaffold', 'dotnet build', 'check:invariants']);
+});
+
+test('no scaffold gate runs any test before the suite has one — MEASURED, not assumed', () => {
+  // Reqnroll generates an assembly-level [SetUpFixture] whose [OneTimeSetUp] calls
+  // TestRunnerManager.OnTestRunStartAsync, which fires ScenarioHooks's [BeforeTestRun] ->
+  // ReadinessProbe.WaitUntilReady() with a 90 s budget. NUnit runs that fixture for ANY test run in
+  // the assembly, so `dotnet test --filter TestCategory=Unit` waits for the SUT too. Measured with
+  // Docker stopped: 96 s and RED, for a step meant to replace a ~50 s one.
+  //
+  // That is why no gate below S14 runs `dotnet test` in any form: before S14 there is no SUT step to
+  // bring the container up, so every such gate would be red and three in a row end the run.
+  for (const row of ['S1', 'S4', 'S6', 'S13']) {
+    const steps = gateSteps('scaffold', { row }).map((step) => step.name);
+    assert.ok(!steps.some((name) => name.startsWith('dotnet test')), `${row}: ${steps.join(', ')}`);
+  }
+});
+
+test('check:invariants is scoped to the target row', () => {
+  // Unscoped it is red by construction until the last row: I3 needs the services, I6 needs the steps.
+  const check = gateSteps('scaffold', { row: 'S6' }).find((s) => s.name === 'check:invariants');
+  const index = check.args.indexOf('--through-row');
+  assert.ok(index !== -1, 'must pass --through-row');
+  assert.equal(check.args[index + 1], 'S6');
+});
+
+test('the scaffold pre-gate never resets the SUT or runs the suite', () => {
+  // A pre-gate asks about strictly EARLIER waves, and the only row that brings tests is the final
+  // one -- so a scaffold pre-gate can never have a test to run. tests/manifest.test.mjs pins that.
+  for (const wave of [1, 4, 7, 8]) {
+    const steps = preGateSteps('scaffold', { wave }).map((step) => step.name);
+    assert.ok(!steps.includes('sut reset'), `wave ${wave}: ${steps.join(', ')}`);
+    assert.ok(!steps.includes('dotnet test'), `wave ${wave}: ${steps.join(', ')}`);
+  }
+});
+
+test('the tests-stage pre-gate is untouched — it still resets before running', () => {
+  assert.deepEqual(
+    preGateSteps('tests', {}).map((step) => step.name),
+    ['sut reset', 'dotnet build', 'dotnet test']
+  );
+});
+
+// ── Skipping a pre-gate that would re-prove what the last one proved (D-23, D-24) ──────
+//
+// Pure, so the decision is tested rather than inferred from a paid run. Every "no" below is a gate
+// that RUNS: this predicate may only ever answer yes when it is certain, because a pre-gate skipped
+// when it was needed sends the agent onto a red foundation to debug someone else's problem.
+
+test('the pre-gate is skipped only when the last green gate was this exact HEAD and nothing is dirty', () => {
+  assert.equal(skipPreGate({ lastGreenSha: 'abc123', headSha: 'abc123', dirty: false }), true);
+});
+
+test('a moved HEAD runs the gate', () => {
+  assert.equal(skipPreGate({ lastGreenSha: 'abc123', headSha: 'def456', dirty: false }), false);
+});
+
+test('a dirty tree runs the gate, even on a matching HEAD', () => {
+  // Uncommitted work in framework/ is exactly what the gate would compile, and it is not what the
+  // last green gate saw.
+  assert.equal(skipPreGate({ lastGreenSha: 'abc123', headSha: 'abc123', dirty: true }), false);
+});
+
+test('a fresh process runs the gate — there is no last green gate to lean on', () => {
+  assert.equal(skipPreGate({ lastGreenSha: null, headSha: 'abc123', dirty: false }), false);
+});
+
+test('an unreadable or empty value on either side runs the gate', () => {
+  // `git()` returns '' for a failure as well as for an empty result, so '' must never satisfy this.
+  assert.equal(skipPreGate({ lastGreenSha: '', headSha: '', dirty: false }), false);
+  assert.equal(skipPreGate({ lastGreenSha: 'abc123', headSha: '', dirty: false }), false);
+  assert.equal(skipPreGate({ lastGreenSha: '', headSha: 'abc123', dirty: false }), false);
+  assert.equal(skipPreGate({ lastGreenSha: undefined, headSha: 'abc123', dirty: false }), false);
 });

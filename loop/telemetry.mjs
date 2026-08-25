@@ -12,9 +12,9 @@
 // its verdict AND its token usage, so the verdict has to be lifted out before anything
 // tries to read it as plain text.
 //
-// One number is deliberately missing: what the WORKER cost. Its output is shown live so a
-// human can watch the turn, and that rules out the mode that would report usage. The turn
-// count and the clock stand in for it.
+// Both sides' costs are recorded now — the worker's as well as the grader's. The worker's
+// output is still shown live, one line at a time as it arrives; it is the loop that reads
+// each line and prints it, and the last line of that stream is where its cost is written.
 // ══════════════════════════════════════════════════════════════════════════════════════
 
 // loop/telemetry.mjs — what a run cost and what it decided, as data.
@@ -28,19 +28,29 @@
 // Everything here is pure, for the same reason `tracker.mjs` is: a number that steers a decision must
 // not be able to drift because of a sloppy parser, and a run costs real money to reproduce.
 //
-// Three things are recorded, and they are NOT the same thing:
+// Four things are recorded, and they are NOT the same thing:
 //
 //   1. the judge's usage — available only when JUDGE_CMD reports it (`claude --output-format json`);
-//   2. wall-clock per phase — always available, because the runner holds the clock itself;
-//   3. the decision — verdict, gate result, and the first line of what was objected to.
+//   2. the agent's usage — likewise, from `claude --output-format stream-json --verbose`;
+//   3. wall-clock per phase — always available, because the runner holds the clock itself;
+//   4. the decision — verdict, gate result, and the first line of what was objected to.
 //
-// The AGENT's usage is deliberately absent, and that is a limitation rather than an oversight. Its
-// stdio is inherited so a human can watch the turn, which is worth more than the number would be;
-// capturing usage would mean `--output-format json` on the agent too, and then nobody sees anything
-// until the turn is over. Duration and iteration count are what stand in for it.
+// The AGENT's usage used to be absent by design: its stdio was inherited so a human could watch the
+// turn, and an inherited stream cannot be read. `--output-format stream-json` removed the choice — it
+// emits one JSON object per line AS THE TURN RUNS, so `runAgent` relays each line to the console and
+// takes `usage` and `total_cost_usd` from the final one. The price paid is that what the operator sees
+// is the runner's rendering of the turn rather than the CLI's own.
+//
+// Either number may still be missing, and a missing one is `null` and prints as `—`. AGENT_CMD and
+// JUDGE_CMD are both documented as pluggable, and a tool that does not speak the envelope must not
+// have its silence recorded as a zero: "nobody said" is not "it was free".
 
-/** Column order of the per-iteration table. Named once so the header and the rows cannot drift. */
-const COLUMNS = ['iter', 'row', 'phase', 'outcome', 'judge', 'in', 'out', 'cost', 'sec', 'note'];
+// Column order of the per-iteration table. Named once so the header and the rows cannot drift.
+//
+// The judge's numbers are prefixed `j-` and the agent's `a-`, because until this task the table had one
+// unlabelled set and a reader had to know which. Both are recorded now, and a run summary that shows
+// only one of them is a run summary that hides most of the cost: the agent turn is the larger half.
+const COLUMNS = ['iter', 'row', 'phase', 'outcome', 'judge', 'j-in', 'j-out', 'j-cost', 'a-in', 'a-out', 'a-cost', 'total', 'sec', 'note'];
 
 /**
  * The judge's stdout, split into the text the runner must parse and the usage it may record.
@@ -119,6 +129,44 @@ function usageOf(envelope) {
 const int = (value) => (Number.isInteger(value) ? value : null);
 const number = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
 
+/**
+ * The usage numbers out of an AGENT's stream, or `null`.
+ *
+ * Deliberately not `parseJudgeReply`, and the difference is measured rather than stylistic. That
+ * function requires `result` to be a **string**, which is right for the judge — the verdict IS that
+ * field, and `String(anObject)` would hand `parseVerdict` the text `[object Object]`. Nothing reads
+ * `result` for the agent; only the numbers beside it. Reusing the judge's guard therefore threw away
+ * the cost of four realistic shapes, measured with stubs:
+ *
+ *   {"type":"result","subtype":"error_max_turns","is_error":true,"usage":{…}}   -> was null
+ *   {"type":"result","result":{"code":"…"},"usage":{…}}                          -> was null
+ *   the envelope followed by any non-JSON line                                  -> was null
+ *   the envelope followed by any further JSON line                              -> was null
+ *
+ * The first is the one that matters: a turn that ran out of turns still cost what it cost, and a
+ * summary row reading `a-cost: —` for it understates exactly the turns worth understanding.
+ *
+ * Scans lines from the END and takes the first object carrying `usage` or `total_cost_usd`, so a
+ * shutdown line after the envelope cannot displace it. Returns `null` — never zeroes — when nothing
+ * reported anything: a zero cost is a claim about a run, and "nobody said" is not that claim.
+ */
+export function parseAgentUsage(stdout) {
+  const lines = (stdout ?? '').split('\n').reverse();
+  for (const line of lines) {
+    const text = line.trim();
+    if (!text.startsWith('{')) continue;
+    try {
+      const parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== 'object') continue;
+      if (parsed.usage === undefined && parsed.total_cost_usd === undefined) continue;
+      return usageOf(parsed);
+    } catch {
+      /* not this line */
+    }
+  }
+  return null;
+}
+
 /** Adds two usage records. `null` is absorbed, so a run mixing tools still totals what it knows. */
 export function addUsage(left, right) {
   if (!left) return right ?? null;
@@ -175,6 +223,44 @@ export function summaryHeader({ startedAt, stage, flow, branch, agentCmd, judgeC
  * judge at all, and a summary that showed an empty verdict cell for it would read as a judge that
  * answered nothing rather than one that was never called.
  */
+/*
+ * Judge plus agent for one turn — the question a reader of this table actually has, which until now
+ * they had to answer by adding two columns in their head. It was added after doing exactly that by
+ * hand, twice, to establish what a stage had cost.
+ *
+ * Three outcomes, and the difference between the last two is the whole point:
+ *
+ *   $2.9601    both sides reported. Exact.
+ *   $3.5728    the judge was never CALLED — a red gate or a refusal ends the turn before it. Zero is
+ *              the true contribution of a call that did not happen, so the sum is exact.
+ *   $1.5157    the AGENT was never run — a `review` row resumes at the judge in a new process. Exact
+ *              for the same reason: no turn, no cost.
+ *   $1.4913+   something that DID run failed to report its cost. The `+` says "at least this much",
+ *              never a number pretending to be complete.
+ *   —          nothing reported anything.
+ *
+ * The discriminator is `verdict`, which is empty exactly when the judge never ran — already in the
+ * data, so this needs no new plumbing from the runner. Without it, both cases arrive as `usage: null`
+ * and the honest reading of one is a lie about the other.
+ */
+function totalCost({ phase, verdict, usage, agentUsage }) {
+  const parts = [
+    // The judge ran exactly when it returned a verdict.
+    { known: usage?.costUsd ?? null, expected: verdict !== '' },
+    // The agent ran exactly on an agent turn. A `review` row resumes straight at the judge, and the
+    // first resumed run marked that row `$1.5157+` — claiming a number had gone missing when no agent
+    // turn had happened at all. Real data found this within one run of the column existing.
+    { known: agentUsage?.costUsd ?? null, expected: phase === 'agent' },
+  ];
+
+  const reported = parts.filter((part) => part.known !== null);
+  if (reported.length === 0) return '—';
+
+  const sum = reported.reduce((total, part) => total + part.known, 0);
+  const silent = parts.some((part) => part.expected && part.known === null);
+  return `$${sum.toFixed(4)}${silent ? '+' : ''}`;
+}
+
 export function summaryRow({
   iteration,
   row,
@@ -182,9 +268,11 @@ export function summaryRow({
   outcome,
   verdict = '',
   usage = null,
+  agentUsage = null,
   seconds = null,
   note = '',
 }) {
+  const cost = (value) => (value === null || value.costUsd === null ? '—' : `$${value.costUsd.toFixed(4)}`);
   const values = [
     String(iteration),
     row,
@@ -193,7 +281,11 @@ export function summaryRow({
     verdict || '—',
     usage === null ? '—' : tokens(usage),
     usage?.outputTokens ?? '—',
-    usage?.costUsd === null || usage === null ? '—' : `$${usage.costUsd.toFixed(4)}`,
+    cost(usage),
+    agentUsage === null ? '—' : tokens(agentUsage),
+    agentUsage?.outputTokens ?? '—',
+    cost(agentUsage),
+    totalCost({ phase, verdict, usage, agentUsage }),
     seconds === null ? '—' : seconds.toFixed(0),
     cell(note),
   ];
@@ -239,11 +331,33 @@ export function usageLine(usage) {
 }
 
 /**
+ * Judge plus agent for the whole run. `—` when neither reported, `+` when one of them did not.
+ *
+ * Deliberately NOT a sum of the table's own `total` column: that column is text, and re-parsing what
+ * this file just formatted is how a rounding error becomes a reported figure.
+ */
+function runTotal(usage, agentUsage) {
+  const parts = [usage?.costUsd ?? null, agentUsage?.costUsd ?? null];
+  const reported = parts.filter((value) => value !== null);
+  if (reported.length === 0) return 'neither side reported a cost';
+  const sum = reported.reduce((total, value) => total + value, 0);
+  return `$${sum.toFixed(4)}${reported.length < parts.length ? '+' : ''}`;
+}
+
+/**
  * The block appended when a run ends. Totals are written HERE and nowhere else, so a run killed with
  * Ctrl-C keeps every row it earned and simply has no totals — an honest missing number rather than a
  * total that counts half a run.
  */
-export function summaryTotals({ iterations, rows, usage, wallSeconds, reason, counts }) {
+export function summaryTotals({
+  iterations,
+  rows,
+  usage,
+  agentUsage = null,
+  wallSeconds,
+  reason,
+  counts,
+}) {
   const outcomes = new Map();
   for (const outcome of rows) outcomes.set(outcome, (outcomes.get(outcome) ?? 0) + 1);
 
@@ -260,10 +374,11 @@ export function summaryTotals({ iterations, rows, usage, wallSeconds, reason, co
       : []),
     `- outcomes: ${[...outcomes].map(([name, n]) => `${n} ${name}`).join(' · ') || 'none'}`,
     `- judge usage: ${usage ? usageLine(usage) : 'not reported by this JUDGE_CMD'}`,
+    `- agent usage: ${agentUsage ? usageLine(agentUsage) : 'not reported by this AGENT_CMD'}`,
+    // Judge plus agent for the whole run. Marked `+` when either side went unreported, for the same
+    // reason the per-row cell is: a total that silently drops a missing number is worse than no total.
+    `- total cost: ${runTotal(usage, agentUsage)}`,
     `- wall clock: ${Math.round(wallSeconds)} s`,
-    '',
-    '> The agent\'s token usage is not captured: its stdio is inherited so the run can be watched.',
-    '> Iterations and wall clock stand in for it.',
     '',
   ].join('\n');
 }

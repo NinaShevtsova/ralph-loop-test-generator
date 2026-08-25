@@ -23,6 +23,7 @@
 import { spawn } from 'node:child_process';
 
 import { FLOW_GROUPS, flowDocPath, featurePath, dataPath } from './config.mjs';
+import { parseAgentUsage } from './telemetry.mjs';
 
 /** `claude -p --model sonnet` -> { bin, args }. */
 export function splitCommand(command) {
@@ -83,7 +84,9 @@ export function targetSection({
       `**Status:** \`${row.status}\``,
       '',
       `**Read the AC here:** \`${flowDocPath(row.group)}\``,
-      `**Append the scenario to:** \`${featurePath(row.group)}\``,
+      `**Append the scenario to:** \`${featurePath(row.group)}\` — **create it if it does not exist.**`,
+      'A flow added after stage 0 ran has no skeleton, and `Features/` is inside your fence, so',
+      'writing it is your work and not grounds for `blocked` — exactly as it is for the data file.',
       `**Add the data block to:** \`${dataPath(row.group)}\` under the key \`${row.id}\``,
       `**Scenario tag:** \`@${row.id}\``,
       `**Scenario title:** \`${row.id} ${row.title}\` — verbatim, the gate compares it.`,
@@ -257,22 +260,138 @@ const closeReason = (code, stdin, stderr = '') =>
   (stdin?.error ? ` (the prompt was not delivered: ${stdin.error.message})` : '');
 
 /**
- * One agent turn. stdout and stderr are inherited for every tool — the human watching the run should
- * see what the agent sees. The prompt goes as the LAST argument, which is why flag order inside
- * AGENT_CMD is not cosmetic: for `copilot` the prompt becomes the value of `-p`, so that string ends
- * in `-p`. For `claude` on win32 it goes through stdin instead; see below.
+ * Whether one stream line carries usage numbers.
+ *
+ * `usage` OR `total_cost_usd`, and neither alone is enough to assume the other: a tool may report one
+ * and not the other, and `parseAgentUsage` already renders a missing number as `—` rather than zero.
+ * The `type` field is deliberately NOT tested — the shape that lost the cost of an `error_max_turns`
+ * turn was `{"type":"result","is_error":true,…}`, and pinning the check to a subtype would only invent
+ * a new way to miss one.
  */
-export function runAgent(command, prompt, { root, env = {}, onSpawn } = {}) {
+function carriesUsage(line) {
+  const text = line.trim();
+  if (!text.startsWith('{')) return false;
+  try {
+    const parsed = JSON.parse(text);
+    return (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      (parsed.usage !== undefined || parsed.total_cost_usd !== undefined)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/*
+ * A tool result, trimmed to what a console can hold.
+ *
+ * `tool_result` blocks arrive on `user` events, which this function used to drop wholesale. The effect
+ * was that a red test showed the operator `· Bash` and nothing else — the tool was named and its
+ * answer was not. Relaying the turn at all was the point of piping the stream, so the answer has to
+ * come with it.
+ *
+ * TRIMMED, because it cannot all be shown: one `dotnet test` result runs to hundreds of lines and
+ * would bury every other turn of the run. The head for a success and the TAIL for a failure, which is
+ * not symmetry for its own sake — a success is recognised by what it set out to do, a failure is
+ * explained by what it ended with, and `dotnet build` and `dotnet test` both put their summary last.
+ * Either way the number of dropped lines is printed, so a trim can never read as the whole answer.
+ */
+const TOOL_RESULT_LINES = { ok: 4, error: 12 };
+const TOOL_RESULT_WIDTH = 200;
+
+function renderToolResult(part) {
+  // `content` is a string for most tools and an array of blocks for the rest. Both shapes are real.
+  const raw =
+    typeof part.content === 'string'
+      ? part.content
+      : (part.content ?? [])
+          .map((block) => (typeof block === 'string' ? block : block?.text ?? ''))
+          .join('\n');
+  const text = raw.trim();
+  // A failure that printed nothing still earns a line: silence would read as "the tool said nothing",
+  // which is the opposite of what happened.
+  if (text === '') return part.is_error ? '  ✗ (the tool failed and printed nothing)' : null;
+
+  const lines = text.split('\n');
+  const budget = part.is_error ? TOOL_RESULT_LINES.error : TOOL_RESULT_LINES.ok;
+  const kept = part.is_error ? lines.slice(-budget) : lines.slice(0, budget);
+  const hidden = lines.length - kept.length;
+  const mark = part.is_error ? '✗' : '↳';
+  const dropFirst = hidden > 0 && part.is_error;
+
+  const shown = kept.map((line) =>
+    line.length > TOOL_RESULT_WIDTH ? `${line.slice(0, TOOL_RESULT_WIDTH)}…` : line
+  );
+  const out = dropFirst ? [`  ${mark} … ${hidden} earlier line(s) not shown`] : [];
+  shown.forEach((line, index) => {
+    out.push(index === 0 && !dropFirst ? `  ${mark} ${line}` : `    ${line}`);
+  });
+  if (hidden > 0 && !part.is_error) out.push(`    … ${hidden} more line(s)`);
+  return out.join('\n');
+}
+
+/**
+ * One stream-json line rendered for a human, or `null` when there is nothing worth showing.
+ *
+ * A tool that does not speak the envelope prints plain text, and that text is passed through
+ * unchanged — `AGENT_CMD` is documented as pluggable and this must not turn another tool's output
+ * into silence.
+ */
+function readableLine(line) {
+  const text = line.trim();
+  if (!text.startsWith('{')) return line;
+
+  let event;
+  try {
+    event = JSON.parse(text);
+  } catch {
+    return line; // not JSON after all; show it rather than swallow it
+  }
+
+  if (event.type === 'assistant') {
+    const parts = event.message?.content ?? [];
+    const rendered = parts
+      .map((part) =>
+        part.type === 'text' ? part.text : part.type === 'tool_use' ? `· ${part.name}` : null
+      )
+      .filter((value) => value !== null && value !== '')
+      .join('\n');
+    return rendered === '' ? null : rendered;
+  }
+  if (event.type === 'user') {
+    const parts = event.message?.content ?? [];
+    const rendered = parts
+      .filter((part) => part?.type === 'tool_result')
+      .map((part) => renderToolResult(part))
+      .filter((value) => value !== null && value !== '')
+      .join('\n');
+    return rendered === '' ? null : rendered;
+  }
+  if (event.type === 'result') return `· turn ended: ${event.subtype ?? 'result'}`;
+  return null; // system bookkeeping, and any user event carrying no tool result
+}
+
+/**
+ * One agent turn. Its stdout is RELAYED — read line by line, rendered, and printed — while stderr
+ * stays inherited, so a crash still lands in front of the operator untouched. The prompt goes as the
+ * LAST argument, which is why flag order inside AGENT_CMD is not cosmetic: for `copilot` the prompt
+ * becomes the value of `-p`, so that string ends in `-p`. For `claude` on win32 it goes through stdin
+ * instead; see below.
+ */
+export function runAgent(command, prompt, { root, env = {}, onSpawn, onOutput } = {}) {
   const { bin, args } = splitCommand(command);
   const useStdin = process.platform === 'win32' && bin === 'claude';
 
-  if (!bin) return Promise.resolve({ ok: false, why: emptyCommand(command) });
+  // `usage: null` on every early return too, so the shape of what this function resolves to does not
+  // depend on how far it got. `null` and not `undefined`, and not zeroes: see `parseJudgeReply`.
+  if (!bin) return Promise.resolve({ ok: false, usage: null, why: emptyCommand(command) });
 
   // Anything else on win32 still gets the prompt as an argument, because prompt-as-last-argument is
   // the convention copilot and codex read. Refuse loudly rather than let cmd.exe truncate it: a
   // silently mangled prompt comes back looking like the agent's fault.
   if (!useStdin && process.platform === 'win32' && prompt.length > CMD_LIMIT) {
-    return Promise.resolve({ ok: false, why: tooLongForCmd(bin, prompt) });
+    return Promise.resolve({ ok: false, usage: null, why: tooLongForCmd(bin, prompt) });
   }
 
   /*
@@ -298,19 +417,72 @@ export function runAgent(command, prompt, { root, env = {}, onSpawn } = {}) {
   return new Promise((done) => {
     const child = spawn(bin, useStdin ? args : [...args, prompt], {
       cwd: root,
-      stdio: useStdin ? ['pipe', 'inherit', 'inherit'] : 'inherit',
+      // stdout is PIPED, not inherited, and that is what buys the turn's cost: the numbers arrive in
+      // the stream, and an inherited stream cannot be read. stderr stays inherited so a crash still
+      // lands in front of the operator untouched.
+      //
+      // stdin changed too, and it is not merely stdout's passenger. Whenever the prompt goes as an
+      // argument this used to be the bare string `'inherit'`, which handed the child THIS PROCESS'S
+      // terminal; it is now `'ignore'`. Deliberate: the prompt is already on the command line, so a
+      // tool that reads stdin waits for input nobody will type, and an inherited terminal turns that
+      // into a run that HANGS rather than a turn that fails. `AGENT_CMD` is documented as pluggable,
+      // so a tool needing a real stdin needs a change here, not only a new command string.
+      stdio: [useStdin ? 'pipe' : 'ignore', 'pipe', 'inherit'],
       shell: process.platform === 'win32',
       env: childEnv,
     });
     onSpawn?.(child);
+
+    // Relayed as it arrives, line by line, so the turn can still be watched. Not byte-identical to the
+    // CLI's own rendering — that is the price of the number, and it is stated in the plan.
+    let buffered = '';
+    /*
+     * The last line that carried usage numbers — NOT simply the last line.
+     *
+     * A turn's whole stdout can be megabytes and none of it is worth keeping, so only the one line the
+     * cost comes from is remembered. Tracking the last line instead lost the number to anything the CLI
+     * printed after its result envelope: measured, both a plain `goodbye` and a further
+     * `{"type":"system","subtype":"shutdown"}` reduced the recorded cost to `—`.
+     */
+    let lastUsageLine = '';
+    /*
+     * DECODED BY THE STREAM, not by `+=`. A pipe emits Buffers split at arbitrary BYTE boundaries, and
+     * `buffered += chunk` decodes each Buffer on its own — so a character whose bytes straddle a
+     * boundary becomes U+FFFD on both sides of it. Nothing in this project is pure ASCII: the
+     * specification's section signs, the em dashes in every comment the agent quotes back, and any
+     * Cyrillic in a commit message all arrive as two or three bytes. `setEncoding` puts a
+     * StringDecoder in front, which holds an incomplete sequence back until the bytes that finish it
+     * arrive.
+     */
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      buffered += chunk;
+      const lines = buffered.split('\n');
+      buffered = lines.pop() ?? '';
+      for (const line of lines) {
+        if (line.trim() === '') continue;
+        if (carriesUsage(line)) lastUsageLine = line;
+        const text = readableLine(line);
+        if (text !== null) (onOutput ?? ((value) => process.stdout.write(`${value}\n`)))(text);
+      }
+    });
+
     const stdin = useStdin ? pipePrompt(child, prompt) : null;
+
     // An agent that is not on PATH would otherwise look like a silent successful turn.
-    child.on('error', (error) => done({ ok: false, why: error.message }));
+    child.on('error', (error) => done({ ok: false, usage: null, why: error.message }));
     // The exit code MUST be read. Otherwise an agent that never even started looks like a
     // successful turn, and the loop spins empty "no progress" iterations.
-    child.on('close', (code) =>
-      done({ ok: code === 0 && !stdin?.error, why: closeReason(code, stdin) })
-    );
+    child.on('close', (code) => {
+      // Both, because the final line can arrive without a newline and so never leave the buffer.
+      // `parseAgentUsage` scans from the end, so the order here decides nothing.
+      const all = `${lastUsageLine}\n${buffered}`;
+      done({
+        ok: code === 0 && !stdin?.error,
+        usage: parseAgentUsage(all),
+        why: closeReason(code, stdin),
+      });
+    });
   });
 }
 
@@ -347,6 +519,11 @@ export function runJudge(command, prompt, { root, onSpawn } = {}) {
 
     let stdout = '';
     let stderr = '';
+    // Same decoder, and it matters more here: this stdout IS the verdict, and it is written to
+    // loop/verdicts/ for the operator to read. `PASS` and `REJECT` are ASCII and survive a mangled
+    // decode, so the damage is silent — the judgement stands while its reasoning turns to mojibake.
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk) => {
       stdout += chunk;
     });

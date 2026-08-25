@@ -7,6 +7,9 @@ import {
   literalIdsInFeature,
   literalIdsInData,
   forbiddenApis,
+  whenWithoutThen,
+  uncheckedServiceCalls,
+  callsAnyService,
   scenarioOutlines,
   foreignLanguageHeader,
   scenarioTags,
@@ -448,4 +451,161 @@ test('exempting the path does not exempt the framework it sits beside', () => {
     outsideFence(['framework/src/PetClinic.ApiTests/Support/ResourceTracker.cs']),
     ['framework/src/PetClinic.ApiTests/Support/ResourceTracker.cs']
   );
+});
+
+// ── Rubric item 4, as a check ────────────────────────────────────────────
+
+test('whenWithoutThen is silent on strict When/Then alternation', () => {
+  // The shape all four accepted F-01 scenarios use.
+  const feature = [
+    'Scenario: AC-F01-01 a registered owner is visible',
+    '    When an owner is registered',
+    '    Then the created owner has an assigned id',
+    '    When the owner details are opened',
+    '    Then the owner details show the submitted values',
+  ].join('\n');
+  assert.deepEqual(whenWithoutThen(feature), []);
+});
+
+test('whenWithoutThen reports a When that runs straight into another When', () => {
+  // Measured on AC-F01-02: `When the owner details are updated` followed by a second When with
+  // nothing asserted between them. The judge charged $2.26 to find it; this costs nothing.
+  const feature = [
+    'Scenario: AC-F01-02 updated owner contacts are visible',
+    '    Given an owner is registered',
+    "    When the owner's details are updated",
+    '    When the owner details are opened',
+    '    Then the owner details show the updated contacts',
+  ].join('\n');
+  const problems = whenWithoutThen(feature);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /owner's details are updated/);
+});
+
+test('whenWithoutThen reports a trailing When at the end of a scenario', () => {
+  // The other shape of the same defect: a request nobody looks at because the scenario simply stops.
+  const feature = 'Scenario: x\n    When a thing happens\n';
+  assert.equal(whenWithoutThen(feature).length, 1);
+});
+
+test('whenWithoutThen tells a continued When apart from a second one', () => {
+  // `And` continues whichever primary keyword opened the block, which is why this is a walk and not a
+  // regex. Both shapes below are wrong, and they are wrong DIFFERENTLY: two requests answered by one
+  // Then is a request too many, while a When running into another When has nothing asserted at all.
+  // Reading the And as its own When would report the second message for the first case and send the
+  // reader looking for a missing Then that is right there.
+  //
+  // An earlier comment here claimed the accepted AC-F01-04 scenario would be misreported. That was
+  // never measured and is false -- no feature file in this repository has an `And` after a `When`.
+  const continued = whenWithoutThen('Scenario: a\n    When the owner is deleted\n    And the owners directory is requested\n    Then the owner is missing');
+  assert.equal(continued.length, 1);
+  assert.match(continued[0], /2 requests before one Then/);
+
+  const second = whenWithoutThen('Scenario: b\n    When one thing happens\n    When another happens\n    Then it is checked');
+  assert.equal(second.length, 1);
+  assert.match(second[0], /has no Then after it/);
+
+  // And the shape that is CORRECT: And inside a Given chain opens nothing.
+  assert.deepEqual(
+    whenWithoutThen('Scenario: c\n    Given a type exists\n    And an owner is registered\n    When the owner is deleted\n    Then it is gone'),
+    []
+  );
+});
+
+test('whenWithoutThen does not carry state across scenarios', () => {
+  // An unanswered When in one scenario must be reported against THAT scenario and must not silence
+  // or accuse the next one.
+  const feature = [
+    'Scenario: first',
+    '    When a thing happens',
+    'Scenario: second',
+    '    When another thing happens',
+    '    Then it is checked',
+  ].join('\n');
+  const problems = whenWithoutThen(feature);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /^first:/);
+});
+
+// ── Rubric items 6 and 18, as a POSITIVE check ──────────────────────────────────
+
+test('uncheckedServiceCalls is silent on the accepted step definitions', () => {
+  const source = {
+    path: 'OwnerSteps.cs',
+    text: [
+      'public async Task AnOwnerIsRegistered()',
+      '{',
+      '    var response = _check.Expect(await _owners.Create(owner), HttpStatusCode.Created);',
+      '}',
+    ].join('\n'),
+  };
+  assert.deepEqual(uncheckedServiceCalls([source]), []);
+});
+
+test('uncheckedServiceCalls accepts the call and the check as separate statements', () => {
+  // C# allows it and it is correct, so a line-wise rule would reject working code. This is why the
+  // rule reads a whole method body.
+  const source = {
+    path: 'OwnerSteps.cs',
+    text: [
+      'public async Task AnOwnerIsRegistered()',
+      '{',
+      '    var r = await _owners.Create(owner);',
+      '    _check.Expect(r, HttpStatusCode.Created);',
+      '}',
+    ].join('\n'),
+  };
+  assert.deepEqual(uncheckedServiceCalls([source]), []);
+});
+
+test('uncheckedServiceCalls reports a service call whose code nobody checked', () => {
+  const source = {
+    path: 'X.cs',
+    text: 'public async Task DoIt()\n{\n    var r = await _owners.Create(o);\n    _state.Set("k", r);\n}',
+  };
+  const hits = uncheckedServiceCalls([source]);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].method, 'DoIt');
+});
+
+test('uncheckedServiceCalls catches a REWORDED assertion, which the negative rule could not', () => {
+  // The whole reason the rule was turned around. The version that forbade `StatusCode.Should(`
+  // matched one spelling out of five; a local variable, `Assert.That`, an int cast and a lambda all
+  // walked past it. Asking "was the call checked" instead of "was it asserted this way" cannot be
+  // dodged by rewording, because it is not about the assertion.
+  const source = {
+    path: 'W.cs',
+    text: 'public async Task D()\n{\n    var r = await _owners.Delete(1);\n    Assert.That(r.StatusCode, Is.EqualTo(404));\n}',
+  };
+  assert.equal(uncheckedServiceCalls([source]).length, 1);
+});
+
+test('uncheckedServiceCalls ignores a service call quoted inside a comment', () => {
+  const source = { path: 'C.cs', text: 'public void D()\n{\n    // await _owners.Create(o) would need a check\n}' };
+  assert.deepEqual(uncheckedServiceCalls([source]), []);
+});
+
+test('callsAnyService reports false for a project whose steps call their API another way', () => {
+  // The premise guard. False here means the gate prints NOT RUN instead of a pass it never earned.
+  assert.equal(callsAnyService([{ path: 'z.py', text: 'assert r.status_code == 404' }]), false);
+  assert.equal(callsAnyService([]), false);
+  assert.equal(callsAnyService(), false);
+});
+
+test('callsAnyService gives the same answer twice, because the pattern carries no lastIndex', () => {
+  // A global regex used with .test() keeps its lastIndex between calls, so every second question
+  // answers false. Measured on the first draft of this rule.
+  const sources = [{ path: 'a.cs', text: 'var r = await _owners.Create(o);' }];
+  assert.equal(callsAnyService(sources), true);
+  assert.equal(callsAnyService(sources), true);
+});
+
+test('whenWithoutThen reports two requests answered by one Then', () => {
+  // The rule's message promises "exactly one request" per AC step. It used to check only that SOME
+  // Then followed, so `When ... And ...` -- two requests -- passed while the message claimed
+  // otherwise. A rule must not promise more than it enforces.
+  const feature = 'Scenario: x\n    When the owner is deleted\n    And the owner is deleted again\n    Then something';
+  const problems = whenWithoutThen(feature);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /2 requests before one Then/);
 });

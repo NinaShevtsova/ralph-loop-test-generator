@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 
 import {
   parseJudgeReply,
+  parseAgentUsage,
   addUsage,
   cell,
   summaryHeader,
@@ -215,18 +216,77 @@ test('the totals block says so when no tool reported usage', () => {
   assert.match(totals, /2 done/);
 });
 
-test('the totals name the agent usage as absent, rather than leaving it to be assumed', () => {
-  // The one number this file cannot give. Saying nothing would let a reader total the judge's cost
-  // and call it the run's cost — wrong by roughly an order of magnitude.
+test('the totals name the agent usage as unreported, rather than leaving it to be assumed', () => {
+  // This used to assert the standing caveat "the agent's token usage is not captured", which was true
+  // while the agent's stdio was inherited and is a lie now that `runAgent` reads the stream. The
+  // property being pinned has not changed: saying NOTHING would let a reader total the judge's cost
+  // and call it the run's cost — wrong by roughly an order of magnitude. What changed is that the
+  // sentence is now about this particular AGENT_CMD rather than about the harness.
   const totals = summaryTotals({
     iterations: 1,
     rows: ['judged'],
     usage: null,
+    agentUsage: null,
     wallSeconds: 10,
     reason: 'done',
     counts: null,
   });
-  assert.match(totals, /agent's token usage is not captured/);
+  assert.match(totals, /agent usage: not reported by this AGENT_CMD/);
+});
+
+test('the totals print the agent usage when the stream reported it', () => {
+  const totals = summaryTotals({
+    iterations: 2,
+    rows: ['judged', 'judged'],
+    usage: { inputTokens: 4, outputTokens: 2135, cacheReadTokens: 0, cacheWriteTokens: 10893, costUsd: 0.6641, durationMs: 1 },
+    agentUsage: { inputTokens: 9, outputTokens: 41_002, cacheReadTokens: 1_980_000, cacheWriteTokens: 24_500, costUsd: 4.1875, durationMs: 2 },
+    wallSeconds: 900,
+    reason: 'every row is done',
+    counts: null,
+  });
+  assert.match(totals, /- agent usage: 9 in · 24500 cache-write · 1980000 cache-read · 41002 out · \$4\.1875/);
+  assert.match(totals, /- judge usage: 4 in .* \$0\.6641/);
+  // The two are separate lines, so neither can be read as the run's whole cost.
+  assert.ok(totals.split('\n').filter((line) => line.includes('usage:')).length === 2);
+});
+
+test('a summary row carries the agent usage beside the judge usage', () => {
+  const row = summaryRow({
+    iteration: 3,
+    row: 'S6',
+    phase: 'agent',
+    outcome: 'judged',
+    verdict: 'PASS',
+    usage: { inputTokens: 2, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 100, costUsd: 0.5, durationMs: 1 },
+    agentUsage: { inputTokens: 5, outputTokens: 900, cacheReadTokens: 7000, cacheWriteTokens: 20, costUsd: 1.25, durationMs: 2 },
+    seconds: 42,
+    note: '',
+  });
+
+  assert.match(row, /\| \$0\.5000 \|/, 'the judge cost must still be there');
+  assert.match(row, /\| \$1\.2500 \|/, 'the agent cost is the number this adds');
+  assert.match(row, /900/, 'agent output tokens');
+});
+
+test('an agent that reported nothing renders as unknown, never as free', () => {
+  const row = summaryRow({ iteration: 1, row: 'S1', phase: 'agent', outcome: 'gate red', agentUsage: null });
+  assert.doesNotMatch(row, /\$0\.0000/, 'a zero cost is a claim; "not reported" is not that claim');
+});
+
+test('the header names as many columns as a row has cells', () => {
+  // The two drifted apart once already; this is what stops it happening again.
+  const header = summaryHeader({
+    startedAt: '2026-08-20T00:00:00.000Z',
+    stage: 'scaffold',
+    flow: null,
+    branch: 'b',
+    agentCmd: 'a',
+    judgeCmd: 'j',
+    stops: { maxIter: 1, kFailures: 1, noImprovement: 1 },
+  });
+  const names = header.split('\n').find((line) => line.startsWith('| iter'));
+  const row = summaryRow({ iteration: 1, row: 'S1', phase: 'agent', outcome: 'judged' });
+  assert.equal(row.split('|').length, names.split('|').length);
 });
 
 test('the summary path is a legal filename on win32 and carries stage and slice', () => {
@@ -235,4 +295,114 @@ test('the summary path is a legal filename on win32 and carries stage and slice'
   // `:` is not legal in a Windows filename, and this repository runs on win32.
   assert.ok(!path.slice('loop/runs/'.length).includes(':'));
   assert.equal(summaryPath('2026-08-18T10:20:30.123Z', 'scaffold'), 'loop/runs/2026-08-18T10-20-30-123-scaffold.md');
+});
+
+// ── The agent's usage is a different question from the judge's verdict ────────────────
+//
+// `parseJudgeReply` requires `result` to be a string, because for the judge that field IS the verdict.
+// Reusing it for the agent threw the cost away in four realistic shapes — all four measured with stubs
+// before these tests existed. A turn that ran out of turns still cost what it cost.
+
+const AGENT_USAGE =
+  '"usage":{"input_tokens":7,"output_tokens":8,"cache_read_input_tokens":9,' +
+  '"cache_creation_input_tokens":10},"total_cost_usd":1.5,"duration_ms":11';
+
+test('parseAgentUsage reads a clean result envelope', () => {
+  const usage = parseAgentUsage(`{"type":"result","subtype":"success","result":"done",${AGENT_USAGE}}`);
+  assert.equal(usage.costUsd, 1.5);
+  assert.equal(usage.inputTokens, 7);
+  assert.equal(usage.cacheWriteTokens, 10);
+});
+
+test('parseAgentUsage keeps the cost of a turn that ran out of turns', () => {
+  // The shape that matters most: no `result` field at all. `parseJudgeReply` returned null here, so the
+  // summary row for a turn that had already spent money read `a-cost: —`.
+  const usage = parseAgentUsage(
+    `{"type":"result","subtype":"error_max_turns","is_error":true,${AGENT_USAGE}}`
+  );
+  assert.equal(usage.costUsd, 1.5);
+});
+
+test('parseAgentUsage keeps the cost when result is an error object', () => {
+  const usage = parseAgentUsage(`{"type":"result","result":{"code":"x"},${AGENT_USAGE}}`);
+  assert.equal(usage.costUsd, 1.5);
+});
+
+test('parseAgentUsage survives anything printed after the envelope', () => {
+  // Both shapes measured: a plain goodbye line, and a further JSON event. Scanning from the end and
+  // skipping objects that carry no numbers is what makes the second one harmless.
+  const envelopeLine = `{"type":"result","result":"done",${AGENT_USAGE}}`;
+  assert.equal(parseAgentUsage(`${envelopeLine}\ngoodbye`).costUsd, 1.5);
+  assert.equal(
+    parseAgentUsage(`${envelopeLine}\n{"type":"system","subtype":"shutdown"}`).costUsd,
+    1.5
+  );
+});
+
+test('parseAgentUsage reports nothing rather than zero when a tool says nothing', () => {
+  // "Nobody reported it" must not render as "it was free" — the same rule parseJudgeReply follows.
+  assert.equal(parseAgentUsage('just some text'), null);
+  assert.equal(parseAgentUsage('{"type":"system","subtype":"init"}'), null);
+  assert.equal(parseAgentUsage(''), null);
+  assert.equal(parseAgentUsage(null), null);
+});
+
+// ── The total column ──────────────────────────────────────────────────────
+
+const J = { inputTokens: 40, outputTokens: 8, cacheReadTokens: 700, cacheWriteTokens: 0, costUsd: 0.9929, durationMs: null };
+const A = { inputTokens: 74, outputTokens: 17, cacheReadTokens: 2696, cacheWriteTokens: 0, costUsd: 1.4913, durationMs: null };
+
+test('the total column adds the judge to the agent', () => {
+  // The question a reader of this table actually has. Adding two columns by hand is what prompted it.
+  const row = summaryRow({ iteration: 5, row: 'S4', phase: 'agent', outcome: 'judged', verdict: 'PASS', usage: J, agentUsage: A, seconds: 565 });
+  assert.match(row, /\| \$2\.4842 \|/, row);
+});
+
+test('a turn that never reached the judge totals the agent alone, with no + marker', () => {
+  // A red gate ends the turn before the judge is called. Zero IS the true contribution of a call that
+  // did not happen, so this sum is exact and must not be hedged.
+  const row = summaryRow({ iteration: 6, row: 'S5', phase: 'agent', outcome: 'gate red', agentUsage: A, seconds: 320 });
+  assert.match(row, /\| \$1\.4913 \|/, row);
+  assert.doesNotMatch(row, /\$1\.4913\+/, 'nothing was silent here, so the total is not a floor');
+});
+
+test('a judge-phase row totals the judge alone, with no + marker', () => {
+  // A `review` row resumes straight at the judge in a new process, so there IS no agent turn and no
+  // cost to be missing. Found by the first resumed run, which marked exactly this row `$1.5157+` and
+  // so claimed a number had gone astray when none existed.
+  const row = summaryRow({ iteration: 1, row: 'S12', phase: 'judge', outcome: 'judged', verdict: 'REJECT', usage: J, seconds: 246 });
+  assert.match(row, /\| \$0\.9929 \|/, row);
+  assert.doesNotMatch(row, /\$0\.9929\+/, 'no agent turn happened, so nothing went unreported');
+});
+
+test('a judge that ran and reported nothing makes the total a floor, not a number', () => {
+  // The distinction the whole helper exists for: `usage: null` arrives for both "never called" and
+  // "called and said nothing", and reporting the second as complete would be a lie about the run.
+  const row = summaryRow({ iteration: 7, row: 'S5', phase: 'agent', outcome: 'judged', verdict: 'PASS', usage: null, agentUsage: A, seconds: 832 });
+  assert.match(row, /\| \$1\.4913\+ \|/, row);
+});
+
+test('a turn where nobody reported a cost totals to a dash, never to zero', () => {
+  const row = summaryRow({ iteration: 8, row: 'S6', phase: 'agent', outcome: 'refused', seconds: 12 });
+  const cells = row.split('|').map((cell) => cell.trim());
+  assert.equal(cells[12], '—', row);
+  assert.doesNotMatch(row, /\$0/, '"nobody said" must never render as "it was free"');
+});
+
+test('the header carries the total column, between a-cost and sec', () => {
+  // Position is not cosmetic: the cell has to sit beside the two numbers it sums, or the reader has to
+  // scan across the row to check the arithmetic.
+  const header = summaryHeader({ startedAt: 'now', stage: 'scaffold', flow: null, branch: 'b', agentCmd: 'a', judgeCmd: 'j', stops: { maxIter: 1, kFailures: 1, noImprovement: 1 } });
+  assert.match(header, /\| a-cost \| total \| sec \| note \|/, header);
+});
+
+test('the run total sums both sides, and marks a floor when one of them is silent', () => {
+  const both = summaryTotals({ iterations: 2, rows: ['judged'], usage: J, agentUsage: A, wallSeconds: 10, reason: 'done' });
+  assert.match(both, /- total cost: \$2\.4842$/m, both);
+
+  const half = summaryTotals({ iterations: 2, rows: ['judged'], usage: null, agentUsage: A, wallSeconds: 10, reason: 'done' });
+  assert.match(half, /- total cost: \$1\.4913\+$/m, half);
+
+  const neither = summaryTotals({ iterations: 2, rows: ['judged'], usage: null, agentUsage: null, wallSeconds: 10, reason: 'done' });
+  assert.match(neither, /- total cost: neither side reported a cost$/m, neither);
 });

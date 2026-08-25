@@ -2,7 +2,9 @@ using System.Text.Json.Serialization;
 
 namespace PetClinic.ApiTests.TestData.Cases;
 
-public class OwnerCase
+// §7 request fields for POST/PUT /owners. lastName is a BASE value: UniqueData appends the
+// unique, format-safe suffix at the point of use, not here.
+public sealed class OwnerCase
 {
     [JsonPropertyName("firstName")]
     public string FirstName { get; set; } = string.Empty;

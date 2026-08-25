@@ -2,14 +2,15 @@ using System.Text.Json.Serialization;
 
 namespace PetClinic.ApiTests.Models;
 
-// §11: the "id" field must be absent from a visit-creation request body — submitting it gives a 500.
-// JsonIgnoreCondition.WhenWritingNull lets a Visit be built for creation by simply leaving Id unset.
-public class Visit
+public sealed class Visit
 {
+    // §11: submitting `id` in the request body causes a 500. Nullable + WhenWritingNull lets a
+    // request be built by simply leaving Id unset, instead of it defaulting to 0 and being sent.
     [JsonPropertyName("id")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? Id { get; set; }
 
+    // Required only when creating through POST /visits; the nested route takes it from the path.
     [JsonPropertyName("petId")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? PetId { get; set; }

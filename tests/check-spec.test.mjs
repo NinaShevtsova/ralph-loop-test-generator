@@ -55,7 +55,12 @@ const gate = (spec, extra = []) => run(process.execPath, [SCRIPT, '--spec', spec
 /** Replace once in a file under the copy, asserting the target was actually there. */
 function edit(spec, relative, from, to) {
   const path = join(spec, relative);
-  const text = readFileSync(path, 'utf8');
+  // Line endings normalised before matching, not after. This repository has `core.autocrlf=true`,
+  // so a checkout without .gitattributes gives these files CRLF while the search strings below are
+  // written with \n — measured, a three-line target then matched 0 times and the test failed on a
+  // machine difference rather than on a behaviour difference. `loop/judge-eval.mjs` normalises for
+  // exactly this reason; this is the second site that needed it.
+  const text = readFileSync(path, 'utf8').split('\r\n').join('\n');
   const count = text.split(from).length - 1;
   assert.equal(count, 1, `mutation target appears ${count} times in ${relative}, expected 1`);
   writeFileSync(path, text.replace(from, to));

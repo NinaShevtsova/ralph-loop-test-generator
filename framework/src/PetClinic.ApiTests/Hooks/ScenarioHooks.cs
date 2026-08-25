@@ -1,14 +1,28 @@
-using Reqnroll;
-using Reqnroll.BoDi;
+using System;
+using System.Threading.Tasks;
+using PetClinic.ApiTests.Config;
 using PetClinic.ApiTests.Http;
 using PetClinic.ApiTests.Services;
 using PetClinic.ApiTests.Support;
+using Reqnroll;
+using Reqnroll.BoDi;
 
 namespace PetClinic.ApiTests.Hooks;
 
+// Wires Reqnroll's per-scenario container to the framework: readiness before any scenario touches
+// the SUT, the four services and the shared ApiClient available to every step, and teardown after
+// each scenario through the same ResourceTracker those services fed.
 [Binding]
 public sealed class ScenarioHooks
 {
+    // Memoised behind a Lazy<Task>, not run in [BeforeTestRun]: a BeforeTestRun hook becomes an
+    // assembly-level SetUpFixture that NUnit runs for every test in the assembly, so it would make
+    // even `dotnet test --filter TestCategory=Unit` sit out the readiness budget (measured at 96 s,
+    // red with the container stopped). A unit test has no scenario, so [BeforeScenario] never fires
+    // for one, while the Lazy still awaits the SUT exactly once for the whole run.
+    private static readonly Lazy<Task> Readiness = new(() =>
+        new ReadinessProbe(ApiClient.Shared, SettingsLoader.Load()).WaitUntilReadyAsync());
+
     private readonly IObjectContainer _container;
 
     public ScenarioHooks(IObjectContainer container)
@@ -16,25 +30,28 @@ public sealed class ScenarioHooks
         _container = container;
     }
 
-    [BeforeTestRun]
-    public static Task BeforeTestRun() => ReadinessProbe.WaitUntilReady();
+    [BeforeScenario(Order = -1)]
+    public static Task AwaitReadiness() => Readiness.Value;
 
-    // Order = 0: every step definition and every other scenario-scoped class (ScenarioState,
-    // ResourceTracker) is resolved through this same container and depends on these five
-    // instances being registered before anything else runs.
     [BeforeScenario(Order = 0)]
     public void RegisterServices()
     {
-        _container.RegisterInstanceAs(ApiClient.Shared);
-        _container.RegisterInstanceAs(new OwnersService(ApiClient.Shared));
-        _container.RegisterInstanceAs(new PetsService(ApiClient.Shared));
-        _container.RegisterInstanceAs(new VisitsService(ApiClient.Shared));
-        _container.RegisterInstanceAs(new PetTypesService(ApiClient.Shared));
+        var client = ApiClient.Shared;
+        _container.RegisterInstanceAs(client);
+        _container.RegisterInstanceAs(new OwnersService(client));
+        _container.RegisterInstanceAs(new PetsService(client));
+        _container.RegisterInstanceAs(new VisitsService(client));
+        _container.RegisterInstanceAs(new PetTypesService(client));
     }
 
-    // Resolved lazily rather than taken as a constructor parameter: ResourceTracker's own
-    // constructor needs the four services above, which only exist in the container once
-    // RegisterServices has run.
+    // Resolved lazily, on the same container, rather than taken as a constructor parameter: this
+    // instance's constructor already runs before RegisterServices (to serve AwaitReadiness at
+    // Order = -1), and ScenarioState's dependency chain only becomes resolvable once that
+    // registration has happened.
     [AfterScenario]
-    public Task DrainResources() => _container.Resolve<ResourceTracker>().Drain();
+    public async Task Cleanup()
+    {
+        var state = _container.Resolve<ScenarioState>();
+        await state.Tracker.Drain();
+    }
 }

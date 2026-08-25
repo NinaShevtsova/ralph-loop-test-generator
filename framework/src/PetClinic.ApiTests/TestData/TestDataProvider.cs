@@ -3,76 +3,72 @@ using Reqnroll;
 
 namespace PetClinic.ApiTests.TestData;
 
-// DATA PROVIDER (D-15): the file is the one named after the scenario's flow (@F01/@F02/@F03 on the
-// Feature line), the key is the scenario's own @AC-Fxx-yy tag. Reqnroll's generated test-method names
-// are mangled, which is why the tag -- never a hand-written string -- is the stable key. Resolved
-// through Reqnroll's DI, one instance per scenario, the same way ScenarioState is.
+// Resolves one scenario's data block: the data FILE from the feature's flow tag (@F01/@F02/@F03),
+// the block inside it from the scenario's @AC-Fxx-yy tag (D-15 — Reqnroll's generated test-method
+// names are mangled, so the tag is the only stable key), and the case object inside that block
+// from the requested T. Resolved through Reqnroll's DI: ScenarioContext and FeatureContext are
+// already registered per scenario/feature, so no explicit registration is needed for this class.
 public sealed class TestDataProvider
 {
-    private static readonly IReadOnlyDictionary<string, string> FeatureFiles = new Dictionary<string, string>
-    {
-        ["F01"] = "F01-owner-lifecycle.json",
-        ["F02"] = "F02-owner-pet-lifecycle.json",
-        ["F03"] = "F03-pet-visit-flow.json",
-    };
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-    };
-
-    private readonly FeatureContext _featureContext;
     private readonly ScenarioContext _scenarioContext;
-    private readonly string _dataDirectory;
+    private readonly FeatureContext _featureContext;
 
-    public TestDataProvider(FeatureContext featureContext, ScenarioContext scenarioContext)
+    public TestDataProvider(ScenarioContext scenarioContext, FeatureContext featureContext)
     {
-        _featureContext = featureContext;
         _scenarioContext = scenarioContext;
-        _dataDirectory = Path.Combine(AppContext.BaseDirectory, "Data");
+        _featureContext = featureContext;
     }
 
-    // Every case class name ends in "Case" (OwnerCase, PetCase, VisitCase, PetTypeCase); the section
-    // of the AC block it reads is that name with the suffix stripped and lower-cased at the head
-    // (OwnerCase -> "owner", PetTypeCase -> "petType") -- the same shape the design's own example
-    // block uses ("owner", "pet") under one AC key.
+    // Data files are copied next to the test assembly (csproj: Data/**/*.json, PreserveNewest).
+    private static string DataDirectory => Path.Combine(AppContext.BaseDirectory, "Data");
+
     public T For<T>()
     {
-        var fileName = ResolveFeatureFile();
         var acTag = ResolveAcTag();
-        return Resolve<T>(_dataDirectory, fileName, acTag);
+        var filePath = ResolveDataFile();
+        return LoadCase<T>(filePath, acTag);
     }
 
-    // Seam for PetClinic.ApiTests.Tests.Smoke.FrameworkSmokeTests: the file+key lookup this method
-    // performs is the mechanism the smoke suite proves, but a plain NUnit test carries no
-    // FeatureContext/ScenarioContext to derive fileName/key from -- so the smoke test passes them in
-    // directly instead of re-implementing the file read, parse and section lookup itself.
-    internal static T Resolve<T>(string dataDirectory, string fileName, string key)
+    // Internal seam: the exact JSON lookup and deserialisation For<T>() uses, taking a raw file path
+    // and block key instead of pulling them from ScenarioContext/FeatureContext. This is what lets
+    // FrameworkSmokeTests's Smoke_data_resolves_by_method_name prove the provider's own resolution
+    // mechanism from a plain NUnit fixture, which has neither context to construct a TestDataProvider
+    // from (D-15) — the two callers share this one method, so they cannot silently diverge.
+    internal static T LoadCase<T>(string filePath, string blockKey)
     {
-        var acBlock = LoadAcBlock(dataDirectory, fileName, key);
-        var sectionName = SectionNameFor<T>();
+        using var stream = File.OpenRead(filePath);
+        using var document = JsonDocument.Parse(stream);
 
-        if (!acBlock.TryGetProperty(sectionName, out var section))
+        if (!document.RootElement.TryGetProperty(blockKey, out var block))
         {
-            throw new InvalidOperationException(
-                $"AC block '{key}' in '{fileName}' has no '{sectionName}' section for {typeof(T).Name}.");
+            throw new InvalidOperationException($"'{filePath}' has no block for key '{blockKey}'.");
         }
 
-        return section.Deserialize<T>(JsonOptions) ?? throw new InvalidOperationException(
-            $"The '{sectionName}' section of '{key}' in '{fileName}' deserialised to null.");
+        var propertyName = CasePropertyName(typeof(T));
+        if (!block.TryGetProperty(propertyName, out var element))
+        {
+            var known = string.Join(", ", EnumeratePropertyNames(block));
+            throw new InvalidOperationException(
+                $"Block '{blockKey}' in '{filePath}' has no '{propertyName}' entry needed to build a {typeof(T).Name}. " +
+                $"Entries present: {(known.Length == 0 ? "(none)" : known)}.");
+        }
+
+        return element.Deserialize<T>(JsonOptions)
+            ?? throw new InvalidOperationException(
+                $"Block '{blockKey}' entry '{propertyName}' in '{filePath}' deserialised to null for {typeof(T).Name}.");
     }
 
-    private string ResolveFeatureFile()
+    // OwnerCase -> "owner", PetTypeCase -> "petType": strips the "Case" suffix and lower-cases the
+    // first letter, so a data file's JSON keys ("owner", "pet", ...) need no separate lookup table.
+    private static string CasePropertyName(Type caseType)
     {
-        var flowTag = _featureContext.FeatureInfo.Tags.FirstOrDefault(tag => FeatureFiles.ContainsKey(tag));
-        if (flowTag is null)
-        {
-            throw new InvalidOperationException(
-                $"Feature '{_featureContext.FeatureInfo.Title}' carries no known flow tag " +
-                $"({string.Join(", ", FeatureFiles.Keys)}). TestDataProvider cannot resolve its data file.");
-        }
-
-        return FeatureFiles[flowTag];
+        const string suffix = "Case";
+        var name = caseType.Name.EndsWith(suffix, StringComparison.Ordinal)
+            ? caseType.Name[..^suffix.Length]
+            : caseType.Name;
+        return char.ToLowerInvariant(name[0]) + name[1..];
     }
 
     private string ResolveAcTag()
@@ -80,43 +76,46 @@ public sealed class TestDataProvider
         var acTag = _scenarioContext.ScenarioInfo.Tags.FirstOrDefault(tag => tag.StartsWith("AC-", StringComparison.Ordinal));
         if (acTag is null)
         {
+            var tags = string.Join(", ", _scenarioContext.ScenarioInfo.Tags);
             throw new InvalidOperationException(
-                $"Scenario '{_scenarioContext.ScenarioInfo.Title}' carries no '@AC-' tag. " +
-                "TestDataProvider keys every case by that tag, never by a hand-written string.");
+                $"Scenario '{_scenarioContext.ScenarioInfo.Title}' carries no '@AC-Fxx-yy' tag. " +
+                $"Tags present: {(tags.Length == 0 ? "(none)" : tags)}.");
         }
 
         return acTag;
     }
 
-    private static JsonElement LoadAcBlock(string dataDirectory, string fileName, string acTag)
+    // Found by the flow tag, not looked up in a hard-coded map: a feature tagged @F01 reads the
+    // one file in Data/ whose name starts with "F01". A closed map would mean a flow added after
+    // this stage cannot be given data at all, because TestData/ is outside the stage-1 fence.
+    private string ResolveDataFile()
     {
-        var path = Path.Combine(dataDirectory, fileName);
-        if (!File.Exists(path))
+        var flowTag = _featureContext.FeatureInfo.Tags.FirstOrDefault(IsFlowTag);
+        if (flowTag is null)
         {
-            throw new FileNotFoundException($"Test data file '{fileName}' was not found at '{path}'.", path);
+            var tags = string.Join(", ", _featureContext.FeatureInfo.Tags);
+            throw new InvalidOperationException(
+                $"Feature '{_featureContext.FeatureInfo.Title}' carries no flow tag (e.g. '@F01'). " +
+                $"Tags present: {(tags.Length == 0 ? "(none)" : tags)}.");
         }
 
-        using var stream = File.OpenRead(path);
-        using var document = JsonDocument.Parse(stream);
-
-        if (!document.RootElement.TryGetProperty(acTag, out var acBlock))
+        var matches = Directory.EnumerateFiles(DataDirectory, $"{flowTag}*.json").ToArray();
+        if (matches.Length != 1)
         {
-            throw new InvalidOperationException($"No JSON block found for '{acTag}' in '{fileName}'.");
+            throw new InvalidOperationException(
+                $"Expected exactly one data file starting with '{flowTag}' in '{DataDirectory}', found {matches.Length}.");
         }
 
-        // The owning JsonDocument is disposed at the end of this method; Clone() detaches the
-        // element so it survives past that point.
-        return acBlock.Clone();
+        return matches[0];
     }
 
-    private static string SectionNameFor<T>()
-    {
-        const string suffix = "Case";
-        var typeName = typeof(T).Name;
-        var baseName = typeName.EndsWith(suffix, StringComparison.Ordinal)
-            ? typeName[..^suffix.Length]
-            : typeName;
+    private static bool IsFlowTag(string tag) => tag.Length >= 3 && tag[0] == 'F' && char.IsDigit(tag[1]);
 
-        return char.ToLowerInvariant(baseName[0]) + baseName[1..];
+    private static IEnumerable<string> EnumeratePropertyNames(JsonElement block)
+    {
+        foreach (var property in block.EnumerateObject())
+        {
+            yield return property.Name;
+        }
     }
 }

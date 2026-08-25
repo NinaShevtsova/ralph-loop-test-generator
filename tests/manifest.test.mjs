@@ -6,18 +6,24 @@ import { join } from 'node:path';
 
 import { repoRoot } from '../scripts/lib.mjs';
 import { parseRows } from '../loop/tracker.mjs';
+import { FLOW_GROUPS } from '../scripts/flows.mjs';
 import {
   SCAFFOLD_MANIFEST,
   SCAFFOLD_ROWS,
   PROJECT_DIR,
   entriesThroughRow,
+  rowOwning,
+  rowNeeds,
+  featureSkeletonEntries,
+  SMOKE_SUITE_ENTRY,
+  UNIT_TEST_ENTRY,
 } from '../scripts/manifest.scaffold.mjs';
 
 const ROOT = repoRoot(import.meta.url);
 const tracker = () => readFileSync(join(ROOT, 'loop/trackers/scaffold.md'), 'utf8');
 
 test('the manifest covers every file design §4 assigns to stage 0', () => {
-  assert.equal(SCAFFOLD_MANIFEST.length, 39);
+  assert.equal(SCAFFOLD_MANIFEST.length, 43);
 });
 
 test('every entry has a path and at least one probe', () => {
@@ -193,14 +199,19 @@ function manifestMapping() {
   return asMapping(byRow);
 }
 
-test('the derivation reads the tracker — 14 rows naming 39 files', () => {
+test('the derivation reads the tracker — 14 rows naming 40 files', () => {
   // FIRST, because every check below compares against this parse. A parser that silently found
   // nothing would make the whole guard vacuous and green: measured on this shape, an empty result
   // agrees with an empty manifest about everything.
+  //
+  // 40, not the manifest's 43: S13's details section names a RULE ("one feature file per flow") and
+  // no paths, because its manifest entries are derived from `FLOW_GROUPS`. That is deliberate — a
+  // path list there would have to be edited every time a flow is added. The number therefore stays 40
+  // when a fourth flow arrives, while the manifest grows to 44.
   const byRow = filesByRow(tracker());
   assert.equal(byRow.size, 14, 'the details sections did not parse into 14 rows');
   const named = [...byRow.values()].reduce((total, files) => total + files.length, 0);
-  assert.equal(named, 39, `the details sections name ${named} file(s), not 39`);
+  assert.equal(named, 40, `the details sections name ${named} file(s), not 40`);
 });
 
 test('every manifest entry names the tracker row that builds it', () => {
@@ -221,7 +232,12 @@ test('every tracker row owns at least one manifest entry', () => {
 });
 
 test('the tracker and the manifest agree, path for path, about which row builds what', () => {
-  assert.deepEqual(manifestMapping(), asMapping(filesByRow(tracker())));
+  // S13 is exempt, and only S13. Its entries are derived from `FLOW_GROUPS`, so there is no second
+  // hand-maintained list for them to drift from — the two tests above pin the derivation instead. Any
+  // other row still has its files written out in the tracker by hand, and that pair still has to
+  // agree; the guard below proves the comparison can still fail.
+  const withoutS13 = (mapping) => Object.fromEntries(Object.entries(mapping).filter(([row]) => row !== 'S13'));
+  assert.deepEqual(withoutS13(manifestMapping()), withoutS13(asMapping(filesByRow(tracker()))));
 });
 
 test('the guard has teeth — a file attributed to the wrong row is caught', () => {
@@ -251,7 +267,7 @@ test('every entry carries the wave its row sits in', () => {
   // `--through-wave` and `--through-row` read two fields of the same entry, and the pre-turn and
   // post-turn gates use one each. A row whose entries disagreed with its tracker group would make
   // the two gates describe different trees. The mutation review noted the wave field was pinned by
-  // nothing at all; this pins all 39.
+  // nothing at all; this pins all 43.
   const waveOfRow = new Map(
     parseRows(tracker()).map((row) => [row.id, Number(row.group.replace('wave-', ''))])
   );
@@ -271,10 +287,11 @@ test('entriesThroughRow returns that row and every row before it', () => {
   assert.equal(entriesThroughRow('S1').length, 5);
 
   // The measured case: S6 is the first row of a three-row wave, so its scope is waves 1-4 whole plus
-  // one file. Wave-scoped, the same gate demanded 22 entries and two of them belonged to later turns.
+  // S6's own two files. Wave-scoped, the same gate demanded S7's and S8's files too, which belonged
+  // to later turns.
   assert.deepEqual(rowsOf(entriesThroughRow('S6')), ['S1', 'S2', 'S3', 'S4', 'S5', 'S6']);
-  assert.equal(entriesThroughRow('S6').length, 20);
-  assert.equal(entriesThroughRow('S7').length, 21);
+  assert.equal(entriesThroughRow('S6').length, 22);
+  assert.equal(entriesThroughRow('S7').length, 23);
 
   assert.equal(entriesThroughRow(SCAFFOLD_ROWS.at(-1)).length, SCAFFOLD_MANIFEST.length);
 });
@@ -285,4 +302,101 @@ test('entriesThroughRow returns null for a row the manifest does not know', () =
   for (const unknown of ['S99', 's6', 'S6 ', '', undefined, null]) {
     assert.equal(entriesThroughRow(unknown), null, `${JSON.stringify(unknown)} must not resolve to a scope`);
   }
+});
+
+// ── Which rows need which gate steps (design 2026-08-20 §7.1, D-21) ──────────────────
+//
+// `loop/gates.mjs` composes the stage-0 gate from these two helpers rather than from a wave number.
+// A wave number would be a magic constant in two files; the manifest already knows which row owns
+// the smoke suite, so the boundary follows the manifest and moves with it.
+
+test('rowOwning names the row that builds a manifest path, and null for anything else', () => {
+  assert.equal(rowOwning(SMOKE_SUITE_ENTRY), 'S14');
+  assert.equal(rowOwning(UNIT_TEST_ENTRY), 'S4');
+  assert.equal(rowOwning('framework/src/PetClinic.ApiTests/Nope.cs'), null);
+});
+
+test('the two entry constants are real manifest paths, not strings that merely look like them', () => {
+  // A constant that had drifted from the manifest would make `rowOwning` return null, and `rowNeeds`
+  // would then answer "no row needs this step" for every row — a gate quietly missing a step.
+  for (const path of [SMOKE_SUITE_ENTRY, UNIT_TEST_ENTRY]) {
+    assert.ok(
+      SCAFFOLD_MANIFEST.some((entry) => entry.path === path),
+      `${path} is not in the manifest`
+    );
+  }
+});
+
+test('rowNeeds is true from the owning row onward and false before it', () => {
+  assert.equal(rowNeeds('S13', SMOKE_SUITE_ENTRY), false);
+  assert.equal(rowNeeds('S14', SMOKE_SUITE_ENTRY), true);
+  assert.equal(rowNeeds('S1', UNIT_TEST_ENTRY), false);
+  assert.equal(rowNeeds('S4', UNIT_TEST_ENTRY), true);
+  assert.equal(rowNeeds('S14', UNIT_TEST_ENTRY), true);
+});
+
+test('rowNeeds fails closed on an unknown row or an unknown path', () => {
+  // Null, never false. False would read as "this row does not need the step", which is a gate with a
+  // step silently missing; null makes the caller say so in its own words.
+  assert.equal(rowNeeds('S99', SMOKE_SUITE_ENTRY), null);
+  assert.equal(rowNeeds('S14', 'framework/src/PetClinic.ApiTests/Nope.cs'), null);
+});
+
+test('the smoke suite is the last row of the stage, so no pre-gate ever has tests to run', () => {
+  // This is what lets the scaffold PRE-gate drop `sut reset` and `dotnet test` outright: a pre-gate
+  // asks about strictly earlier waves, and the only row that brings tests is the final one.
+  assert.equal(rowOwning(SMOKE_SUITE_ENTRY), SCAFFOLD_ROWS[SCAFFOLD_ROWS.length - 1]);
+});
+
+// ── A flow added later must not need this file edited ────────────────────────────────
+//
+// S13's three feature skeletons used to be written out one per line. A fourth flow would then have no
+// skeleton until somebody remembered this list — and the omission would not surface here. It would
+// surface as a REJECTED STAGE-1 TURN, because `check-tests.mjs` fails when the feature file of the
+// flow under test is absent, and the message it prints blames stage 0.
+
+test('featureSkeletonEntries produces one entry per flow it is given', () => {
+  // Called with a fourth flow, which is the case the derivation exists for and the one a test of the
+  // finished manifest could never reach.
+  const entries = featureSkeletonEntries({
+    'F-01': 'F01-owner-lifecycle',
+    'F-02': 'F02-owner-pet-lifecycle',
+    'F-03': 'F03-pet-visit-flow',
+    'F-04': 'F04-owner-search',
+  });
+
+  assert.equal(entries.length, 4);
+  assert.deepEqual(
+    entries.map((entry) => entry.path.split('/').pop()),
+    [
+      'F01-owner-lifecycle.feature',
+      'F02-owner-pet-lifecycle.feature',
+      'F03-pet-visit-flow.feature',
+      'F04-owner-search.feature',
+    ]
+  );
+  for (const entry of entries) {
+    assert.equal(entry.row, 'S13');
+    assert.equal(entry.wave, 8);
+  }
+});
+
+test("each derived skeleton's probe looks for its own flow tag and rejects another's", () => {
+  // The probe is what stops one flow's skeleton being satisfied by another flow's file.
+  const entries = featureSkeletonEntries({ 'F-01': 'F01-a', 'F-04': 'F04-b' });
+  const [first, fourth] = entries;
+
+  assert.ok(first.probes.some((probe) => probe.test('@F01 Feature: x')));
+  assert.ok(!first.probes.some((probe) => probe.test('@F04')), 'F-01 must not accept @F04');
+  assert.ok(fourth.probes.some((probe) => probe.test('@F04 Feature: x')));
+  assert.ok(!fourth.probes.some((probe) => probe.test('@F01')), 'F-04 must not accept @F01');
+});
+
+test('the live manifest uses the derivation, so the flow list is the only place flows are listed', () => {
+  const derived = featureSkeletonEntries(FLOW_GROUPS).map((entry) => entry.path);
+  const inManifest = SCAFFOLD_MANIFEST
+    .filter((entry) => /\/Features\/[^/]+\.feature$/.test(entry.path))
+    .map((entry) => entry.path);
+
+  assert.deepEqual(inManifest, derived);
 });

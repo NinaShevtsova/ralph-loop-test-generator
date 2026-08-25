@@ -3,25 +3,25 @@ using PetClinic.ApiTests.Models;
 
 namespace PetClinic.ApiTests.Services;
 
-// A pet is created only through OwnersService.AddPet and deleted only through Delete below (§7).
+// SERVICE OBJECT (design §4) over the direct pet routes. Creation has no route here — §7 states a
+// pet is created only via OwnersService.AddPet — and deletion is only here, never via the owner.
 public sealed class PetsService
 {
-    private readonly ApiClient _client;
+    private readonly RouteClient _client;
 
     public PetsService(ApiClient client)
     {
-        _client = client;
+        _client = new RouteClient(client);
     }
 
-    public Task<ApiResponse<List<Pet>>> GetAll() =>
-        _client.Get<List<Pet>>("pets");
+    public Task<ApiResponse<List<Pet>>> GetAll() => _client.Get<List<Pet>>("pets");
 
-    public Task<ApiResponse<Pet>> Get(int petId) =>
-        _client.Get<Pet>("pets/{petId}", b => b.WithPathParam("petId", petId));
+    public Task<ApiResponse<Pet>> GetById(int petId) =>
+        _client.Get<Pet>("pets/{petId}", ("petId", petId));
 
-    public Task<ApiResponse> Update(int petId, Pet pet) =>
-        _client.Put("pets/{petId}", pet, b => b.WithPathParam("petId", petId));
+    public Task<ApiResponse<object?>> Update(int petId, Pet pet) =>
+        _client.Put("pets/{petId}", pet, ("petId", petId));
 
-    public Task<ApiResponse> Delete(int petId) =>
-        _client.Delete("pets/{petId}", b => b.WithPathParam("petId", petId));
+    public Task<ApiResponse<object?>> Delete(int petId) =>
+        _client.Delete("pets/{petId}", ("petId", petId));
 }

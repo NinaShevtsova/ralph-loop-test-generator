@@ -24,7 +24,7 @@
 | S11 | wave-6 | BDD wiring: hooks, DI registration, non-parallelisable assembly | done |
 | S12 | wave-7 | The 22 request steps, grouped by domain | done |
 | S13 | wave-8 | Feature file skeletons for F-01, F-02, F-03 | done |
-| S14 | wave-8 | The three smoke tests and their data file | done |
+| S14 | wave-8 | The three smoke tests, the wiring canary, and their data files | done |
 
 **Total:** 14 tasks in 8 waves.
 
@@ -67,9 +67,15 @@ The `Visit` request body must be buildable **without** `id`: submitting `id` giv
 
 ### S4 — HTTP core
 
-**Files:** `PROJECT/Http/RequestSpec.cs`, `RequestSpecBuilder.cs`, `ApiResponse.cs`, `ApiClient.cs`
+**Files:** `PROJECT/Http/RequestSpec.cs`, `RequestSpecBuilder.cs`, `ApiResponse.cs`, `ApiClient.cs`,
+`PROJECT/Tests/Unit/ApiResponseTests.cs`
 
 **DoD:** a smoke call to `GET /pettypes` through `ApiClient` returns 200.
+`Tests/Unit/ApiResponseTests.cs` proves by running, not by inspection, that `EnsureStatus` throws with
+**both** codes and the response body in the message, and that it is silent on the expected code. Every
+one of the twenty scenarios routes its response-code checks through this one method, so a failure that
+does not show the body costs its reader a reproduction. Mark the fixture `[Category("Unit")]`: the gate
+runs these before the SUT exists, so they must need no HTTP and no Docker.
 
 `RequestSpec` is the reusable request specification: base URL, default `Content-Type` and `Accept`
 of `application/json`, timeout. Immutable, with a static `Default(TestSettings)`. `ApiClient` owns
@@ -77,6 +83,17 @@ of `application/json`, timeout. Immutable, with a static `Default(TestSettings)`
 `new RestClient` may exist anywhere. `ApiResponse` exposes `StatusCode`, a typed `Body`,
 `RawContent`, `Headers` and `EnsureStatus(HttpStatusCode)` which throws with `RawContent` in the
 message — that message is what makes a wrong code diagnosable at the request site (rubric 17).
+
+**The response carries the request that produced it, and a failure message names it.** `ApiClient`
+has the verb and the resolved URL in hand — RestSharp puts them on the response — and dropping them
+is the difference between a message an operator can act on and one they cannot. Measured on the build
+that dropped them: every failure in the suite read `Expected HTTP 204 NoContent but got 404 NotFound.
+Response body:` — no verb, no URL, no id. On a 404 the body is empty by §7, so the commonest failure
+of all carried nothing. The form that works: `DELETE http://…/owners/117 → 404 NotFound. Body: (empty)`.
+
+**The guard accepts SEVERAL acceptable codes.** More than one code is legitimate for one call —
+teardown deletes answer `204` or `404` and both are fine — and the alternative is a hand-written `if`
+around the check. That branch is where a real teardown defect lived: see S7.
 
 ### S5 — Services
 
@@ -91,17 +108,38 @@ The asymmetry matters and is easy to get wrong: a pet is created **only** throug
 by **two** routes (`PUT /pets/{petId}` and `PUT /owners/{ownerId}/pets/{petId}`); a visit is created
 by **two** routes (`POST /owners/{ownerId}/pets/{petId}/visits` and `POST /visits`).
 
+**A shared helper type gets its own file.** If the four services end up routing their calls through
+a common adapter, it is declared in `PROJECT/Services/RouteClient.cs`, not inside one service's file.
+Measured on a build that put it inside `OwnersService.cs`: three of its four users could not see why it
+lived there, and a whole-tree check read its `public` members as `OwnersService`'s own API and blocked
+a run on a method no step should ever call.
+
 ### S6 — UniqueData
 
-**Files:** `PROJECT/Support/UniqueData.cs`
+**Files:** `PROJECT/Support/UniqueData.cs`, `PROJECT/Tests/Unit/UniqueDataTests.cs`
 
-**DoD:** unit checks prove `LastName("Testowner")` appends a **letters-only** suffix and stays
-within 30 characters; `Telephone()` returns exactly 10 digits; `PetName()` stays within 30;
-`PetTypeName()` within 80; every date is formatted `yyyy-MM-dd` with `InvariantCulture`.
+**DoD:** `Tests/Unit/UniqueDataTests.cs` proves, by running: `LastName("Testowner")` appends a
+**letters-only** suffix and stays within 30 characters; `LastName` trims an over-long base rather than
+overflowing; `Telephone()` returns exactly 10 digits; `PetName` stays within 30 and `PetTypeName`
+within 80; **repeated calls do not collide**; and `Date` formats `yyyy-MM-dd` **with
+`CultureInfo.CurrentCulture` set to `uk-UA`**, restoring the culture in a `finally`. Mark the fixture
+`[Category("Unit")]`.
 
 Why each constraint exists: digits in a last name are rejected with `400` (§10.5); a telephone of
 11–20 digits passes schema validation and then fails with `500` on save (§11); on a `uk-UA` machine
 a culture-sensitive `ToString()` produces `14.05.2020` and the request is rejected.
+
+**On "repeated calls do not collide", which is the one a plausible design gets wrong.** Measured
+against the scaffold this requirement was written for: `Telephone()` returned **11 to 24 duplicates out
+of 50 consecutive calls**, and `LastName` 10 to 22. The cause was a token built as
+`Interlocked.Increment(ref _counter) ^ DateTime.UtcNow.Ticks` — both operands move in the same low
+bits, so the XOR destroys the counter's monotonicity and two calls collide outright (counter 2 with
+ticks 4, and counter 3 with ticks 5, both yield 6). Spaced a millisecond apart it produced no
+duplicates at all, which is why twenty integration scenarios at HTTP cadence never caught it and a
+judge reading the code never saw it.
+
+Do not combine a counter and a clock with XOR. A monotonically increasing token — the counter in the
+high bits, or a per-process random base plus the counter — satisfies this in one line.
 
 ### S7 — ResourceTracker
 
@@ -112,6 +150,14 @@ specifically (not any exception), and a second `Drain()` does not throw.
 
 The order is mandatory, not stylistic: an owner with two pets of the same type cannot be deleted —
 the request answers `404` and nothing is removed (§11).
+
+**Every list drains even when one of them fails, and the ids are cleared in a `finally`.** The order
+stays visits → pets → owners → pet types, because the API refuses to delete a parent that still has
+children. What must not happen is the shape measured on an earlier build: the clear sat *after* the
+loop and a failure threw straight out of the first pass, so the three later lists were never touched
+and the first was never cleared. One `500` on a visit left an owner, a pet and a pet type in the
+database, and the next scenario saw another scenario's data. Collect the failures, drain everything,
+then throw once.
 
 ### S8 — ReadinessProbe
 
@@ -133,6 +179,30 @@ scenario, and the `ResourceTracker`. Resolved through Reqnroll's DI, one instanc
 In BDD the chain "create an owner → remember `ownerId` → use it in the next step" cannot live in a
 local variable, because the steps are different methods. This class is that memory.
 
+**Addressed by key, not by recency — a requirement, not a style preference.** A step stores a value
+under a name; any later step reads it by that name, whatever ran in between, until the scenario ends.
+
+The case that decides it, because a plausible design gets this wrong: the arrange block of **all six**
+F-03 acceptance criteria is "an owner is registered with a pet", and the chain both F-02 and F-03
+state is `GET /pettypes` → `POST /owners` → `POST /owners/{ownerId}/pets`. The pet type is fetched
+**first** and used **third**, with the owner registration in between. A holder exposing only "the last
+response" plus one fixed slot per entity cannot serve that — measured on a build that shipped exactly
+that shape, the pet step threw `InvalidOperationException` in its `Given` form, which is the form all
+six F-03 criteria need, and `Support/` is outside the stage-1 fence so no later turn could repair it.
+
+Fixed per-entity properties are fine as a convenience **on top of** the keyed store. They are not a
+substitute for it.
+
+**The nullable guards live in this class, not at every call site.** `ApiResponse<T>.Body` is
+nullable and every model's `Id` is `int?`, so a step that reads either needs a guard. Expose them here
+once — a `Body<T>(key)` that returns the stored response's body or throws a named failure, and an id
+accessor per created entity — rather than letting each step write its own `?? throw`.
+
+Measured on a build that did not: **63** copies of the body guard and **36** of the id guard across the
+step files, the same sentence repeated up to 13 times, in four different wordings for the same
+condition. Changing what a missing body reports meant 63 edits. Collapsing them removed 63 net lines
+and changed no behaviour — 33/33 before and after.
+
 ### S10 — TestDataProvider
 
 **Files:** `PROJECT/TestData/TestDataProvider.cs`, `PROJECT/TestData/Cases/OwnerCase.cs`,
@@ -144,13 +214,31 @@ taken from the scenario's `@AC-Fxx-yy` tag via `ScenarioContext`. Never a hand-w
 Reqnroll's generated test-method names are mangled, which is why the tag — not the method name — is
 the stable key (D-15).
 
+The data **file** is resolved by the feature's flow tag, not from a hard-coded map: a feature tagged
+`@F01` reads the one file in `Data/` whose name starts with `F01`. Exactly one match is required —
+zero and several both throw, naming the tag and the count. A closed map would mean a flow added after
+this stage cannot be given data at all, because `TestData/` is outside the stage-1 fence and no
+stage-1 turn may edit this class.
+
 ### S11 — BDD wiring
 
 **Files:** `PROJECT/Hooks/ScenarioHooks.cs`, `PROJECT/AssemblyInfo.cs`
 
-**DoD:** `[BeforeTestRun]` waits for readiness; `[BeforeScenario(Order = 0)]` registers the four
-services and `ApiClient.Shared` in `IObjectContainer`; `[AfterScenario]` calls
-`ResourceTracker.Drain()`; `AssemblyInfo.cs` carries `[assembly: NonParallelizable]`.
+**DoD:** `[BeforeScenario(Order = 0)]` registers the four services and `ApiClient.Shared` in
+`IObjectContainer`; `[AfterScenario]` calls `ResourceTracker.Drain()`; `AssemblyInfo.cs` carries
+`[assembly: NonParallelizable]`.
+
+Readiness is awaited in `[BeforeScenario(Order = -1)]`, memoised behind a `Lazy<Task>` — **not** in
+`[BeforeTestRun]`. Reqnroll generates an assembly-level `[SetUpFixture]` that runs for any test run in
+the assembly, so a `[BeforeTestRun]` probe makes even `dotnet test --filter TestCategory=Unit` wait out
+the readiness budget: measured at 96 s and red with the container stopped. A unit test has no scenario,
+so a scenario hook never fires for it, while the twenty BDD scenarios still get a ready API. The three
+smoke tests keep their own `[OneTimeSetUp]` probe and are unaffected either way.
+
+This is enforced, not merely asked for: I7 in `scripts/invariants.mjs` refuses `[BeforeTestRun]` and a
+hand-written `[SetUpFixture]` anywhere in the assembly, and it is in scope for this row's gate. The
+manifest's `Lazy<Task>` probe cannot do it — a probe requires a marker, it cannot forbid one, so a file
+carrying both would pass every probe on it.
 
 Parallel execution is forbidden (§10.7): the tests share one database and assertions on collection
 counts would become non-deterministic.
@@ -165,20 +253,53 @@ counts would become non-deterministic.
 
 These steps contain **nothing from any AC** — they derive from the contract, which is exactly why
 they belong to stage 0 (D-13). Grouping is by domain, not by flow, so reuse across flows is natural.
+
+**The four creation sentences carry `[Given]` as well as `[When]`.** "an owner is registered", "a pet
+is added to the owner", "a visit is recorded for the pet" and "a pet type is added to the directory"
+are each the action under test for their own AC **and** the precondition of later flows. In the
+`Given` role a step may not depend on what ran immediately before it — see S9's DoD.
+
+**A request body carries only the fields §7 lists as REQUEST fields.** Read-only response fields —
+`id`, `ownerId` and `visits[]` on a pet — are not sent back on a `PUT`. A model whose collection
+property would serialise as `"visits": []` needs the guard that stops it: §11 records a `PUT` carrying
+a read-only field as a `500` on save, and `AC-F03-04` and `AC-F02-10` assert on the very history such
+a body would erase.
 Sentences are in domain language: `the owner details are opened`, not `GET owners by id`.
+
+**A wrong response code means one of two things, and the SCENARIO decides which.** A code that fails
+in a `Given` means the setup broke — nothing has been tested yet, so it must surface as an **error**. A
+code that fails in a `When` or `Then` means the acceptance criterion does not hold — a **failure**,
+carrying a `because` and usable inside an `AssertionScope`. Rubric item 19 asks for exactly this
+distinction, and one exception type for both erases it on every scenario.
+
+**The role cannot be chosen at the call site, and that is the whole design constraint.** Five sentences
+carry `[Given]` and `[When]` both — "an owner is registered" is the criterion of `AC-F01-01` and the
+precondition of three other ACs — so the same method body serves both roles. Splitting the method in
+two would duplicate those five steps, which is the reuse-by-rewording `steps:inventory` forbids.
+Reqnroll reports which keyword matched the running step, including resolving an `And` to whatever
+opened the block; read the role from there. `Support/` is the place for it, not `Http/` — the transport
+layer must not know about Gherkin.
+
+Teardown and the smoke tests keep the plain guard: `[AfterScenario]` and plain NUnit have no current
+step, and a teardown failure is infrastructure in every case.
+
+**Every service call in a step ends in a check.** Not "never assert a code by hand" — that forbids one
+spelling out of at least five and is silently vacuous on any project that asserts another way. The
+gate asks the positive question.
 
 ### S13 — Feature skeletons
 
-**Files:** `PROJECT/Features/F01-owner-lifecycle.feature`,
-`F02-owner-pet-lifecycle.feature`, `F03-pet-visit-flow.feature`
+**Files:** one feature file per flow, in `PROJECT/Features/`, named after that flow's slug.
 
-**DoD:** each file has a `Feature:` header, the flow tag (`@F01`/`@F02`/`@F03`) and a short
-description taken from the flow's "What the flow verifies" section. **No scenarios yet** — stage 1
-appends those, one per iteration.
+**DoD:** the flow list in scripts/flows.mjs decides how many files there are — three today. Each has a
+`Feature:` header, its flow tag (`@F01`/`@F02`/`@F03`, one per file) and a short description taken
+from that flow's "What the flow verifies" section. **No scenarios yet** — stage 1 appends those, one
+per iteration, and creates the file itself if a flow was added after this stage ran.
 
 ### S14 — Smoke suite
 
-**Files:** `PROJECT/Tests/Smoke/FrameworkSmokeTests.cs`, `PROJECT/Data/FrameworkSmokeTests.json`
+**Files:** `PROJECT/Tests/Smoke/FrameworkSmokeTests.cs`, `PROJECT/Data/FrameworkSmokeTests.json`,
+`PROJECT/Tests/Smoke/F00-framework-wiring.feature`, `PROJECT/Data/F00-framework-wiring.json`
 
 **DoD:** three plain NUnit tests, all green. They are **not** AC tests, carry no AC id and never
 appear in the traceability — they prove the three mechanisms all 20 scenarios depend on:
@@ -188,6 +309,31 @@ appear in the traceability — they prove the three mechanisms all 20 scenarios 
 | `Smoke_full_chain_through_services` | `GET /pettypes` → `POST /owners` → `POST /owners/{id}/pets` → `POST .../visits`, then read every entity back |
 | `Smoke_tracker_cleans_up_in_order` | drain order, `404` swallowed, second drain safe |
 | `Smoke_data_resolves_by_method_name` | the provider finds its block in `Data/FrameworkSmokeTests.json` |
+
+Plus **the canary**: one Gherkin scenario in `Tests/Smoke/F00-framework-wiring.feature`, tagged `@F00`
+on the `Feature:` line and `@AC-F00-01` on the scenario, whose steps are **existing request steps
+only** — it adds no step definition, so it cannot collide with a stage-1 sentence or appear in
+`loop/STEPS.md`. Its data lives in `Data/F00-framework-wiring.json` under the key `AC-F00-01`; the file
+name starts with the flow tag because that is how S10's provider finds it, so no map entry and no C#
+change are needed.
+
+Why it exists: the three smoke tests are plain NUnit and reach `TestDataProvider` through an internal
+seam, so `ResolveFeatureFile`, `ResolveAcTag`, the `BeforeScenario` registrations, `ScenarioState`, the
+22 request steps and the `AfterScenario` drain through the container are otherwise **never executed in
+stage 0 at all** — their first run would be inside stage 1's first paid iteration, which is also the
+iteration that becomes the exemplar every later one copies.
+
+It must not pass vacuously: disabling the `BeforeScenario` hook in `ScenarioHooks` — or commenting out
+all five of its `RegisterInstanceAs` calls — has to turn it red. Removing a *single* registration does
+**not**, and that is not a defect in the canary: Reqnroll's BoDi container constructs any concrete type
+whose constructor arguments it can already resolve, so each service is simply rebuilt from the still
+registered `ApiClient`. Measured on this framework: the four service registrations and the `ApiClient`
+one are each individually removable with the canary still green, while the one-line removal of
+`[BeforeScenario(Order = 0)]` fails it with `Circular dependency found! System.Uri (resolution path:
+OwnerSteps->OwnersService->ApiClient->RestSharp.RestClient->System.Uri)`.
+
+The file lives outside `Features/` deliberately. `scripts/check-tests.mjs` counts the scenarios in that
+directory against the tracker's `done` rows, and `Tests/` is outside the stage-1 fence.
 
 ---
 

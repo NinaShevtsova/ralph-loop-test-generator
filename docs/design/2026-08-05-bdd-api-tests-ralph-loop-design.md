@@ -163,7 +163,12 @@ framework/
                                            visits → pets → owners → pettypes, swallowing 404 only
       ReadinessProbe.cs                    polls GET /pettypes until 200, readinessTimeoutMs. Never restarts anything
       ScenarioState.cs                     scenario-scoped state resolved through Reqnroll DI: the response of
-                                           every request step, created entities, and the ResourceTracker
+                                           every request step, created entities, and the ResourceTracker.
+                                           ADDRESSED BY KEY: a step reads what an earlier step stored, by name,
+                                           however many steps ran in between. A "last response" slot alone does
+                                           not do this — F-02 and F-03 both run GET /pettypes → POST /owners →
+                                           POST /owners/{ownerId}/pets, so the pet type is fetched first and
+                                           needed third, with the owner registration overwriting in between
     TestData/
       TestDataProvider.cs                  DATA PROVIDER: file = feature name, key = the @AC-XX-YY tag from
                                            ScenarioContext. For<T>() returns the deserialised case

@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace PetClinic.ApiTests.Models;
 
-public class PetType
+public sealed class PetType
 {
     [JsonPropertyName("id")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

@@ -1,22 +1,53 @@
 {
   "AC-F01-01": {
-    "owner": { "firstName": "Anna", "lastName": "Petliura",
-               "address": "12 Shevchenka Street", "city": "Lviv", "telephone": "0501234567" }
+    "owner": {
+      "firstName": "Anna",
+      "lastName": "Hrynenko",
+      "address": "12 Sadova Street",
+      "city": "Lviv",
+      "telephone": "0501234567"
+    }
   },
   "AC-F01-02": {
-    "owner": { "firstName": "Oksana", "lastName": "Kravchenko",
-               "address": "45 Sadova Street", "city": "Kharkiv", "telephone": "0671112233" },
-    "ownerUpdate": { "city": "Poltava" }
+    "owner": {
+      "firstName": "Oksana",
+      "lastName": "Bondarenko",
+      "address": "45 Franka Street",
+      "city": "Kyiv",
+      "telephone": "0671234567"
+    },
+    "ownerContacts": {
+      "city": "Odesa",
+      "telephone": "0997654321"
+    }
   },
   "AC-F01-03": {
-    "owner": { "firstName": "Mykola", "lastName": "Boyko",
-               "address": "8 Franka Street", "city": "Ternopil", "telephone": "0509876543" }
+    "owner": {
+      "firstName": "Ihor",
+      "lastName": "Savchenko",
+      "address": "8 Soborna Street",
+      "city": "Ternopil",
+      "telephone": "0631234567"
+    }
   },
   "AC-F01-04": {
-    "petType": { "name": "Hamster" },
-    "owner": { "firstName": "Ihor", "lastName": "Savchenko",
-               "address": "3 Hrushevskoho Street", "city": "Rivne", "telephone": "0632223344" },
-    "pet": { "name": "Pet", "birthDate": "2020-05-14" },
-    "visit": { "description": "Rabies shot qwerty", "date": "2026-07-01" }
+    "petType": {
+      "name": "Type"
+    },
+    "owner": {
+      "firstName": "Yulia",
+      "lastName": "Marchenko",
+      "address": "21 Hrushevskoho Street",
+      "city": "Poltava",
+      "telephone": "0951234567"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2020-05-14"
+    },
+    "visit": {
+      "description": "Rabies shot qwerty",
+      "date": "2026-07-01"
+    }
   }
 }

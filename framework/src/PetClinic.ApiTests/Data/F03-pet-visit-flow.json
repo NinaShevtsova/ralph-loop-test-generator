@@ -1,40 +1,111 @@
 {
   "AC-F03-01": {
-    "owner": { "firstName": "Roman", "lastName": "Bondarenko",
-               "address": "14 Khreshchatyk Street", "city": "Kyiv", "telephone": "0501112233" },
-    "pet": { "name": "Pet", "birthDate": "2020-06-10" },
-    "visit": { "description": "Rabies shot", "date": "2025-11-05" }
+    "owner": {
+      "firstName": "Anna",
+      "lastName": "Petliura",
+      "address": "12 Shevchenka Street",
+      "city": "Lviv",
+      "telephone": "0501234567"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2020-05-14"
+    },
+    "visit": {
+      "description": "Rabies shot qwerty",
+      "date": "2026-07-01"
+    }
   },
   "AC-F03-02": {
-    "owner": { "firstName": "Iryna", "lastName": "Kovalenko",
-               "address": "8 Franka Street", "city": "Lviv", "telephone": "0507654321" },
-    "pet": { "name": "Pet", "birthDate": "2020-08-01" },
-    "visit": { "description": "Checkup", "date": "2025-09-01" },
-    "visit2": { "description": "Follow-up shot", "date": "2025-09-15" }
+    "owner": {
+      "firstName": "Yuliia",
+      "lastName": "Marchenko",
+      "address": "27 Soborna Square",
+      "city": "Zaporizhzhia",
+      "telephone": "0679876543"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2019-01-20"
+    },
+    "visit": {
+      "description": "Skin check qwerty",
+      "date": "2026-06-15"
+    },
+    "secondVisit": {
+      "description": "Follow-up check qwerty",
+      "date": "2026-06-20"
+    }
   },
   "AC-F03-03": {
-    "owner": { "firstName": "Mykola", "lastName": "Shevchenko",
-               "address": "22 Sadova Street", "city": "Odesa", "telephone": "0509876543" },
-    "pet": { "name": "Pet", "birthDate": "2020-03-15" },
-    "visit": { "description": "Booster shot" }
+    "owner": {
+      "firstName": "Bohdan",
+      "lastName": "Kovalenko",
+      "address": "5 Franka Street",
+      "city": "Ternopil",
+      "telephone": "0631234567"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2021-03-10"
+    },
+    "visit": {
+      "description": "Vaccination booking qwerty"
+    }
   },
   "AC-F03-04": {
-    "owner": { "firstName": "Olena", "lastName": "Tkachenko",
-               "address": "5 Soborna Street", "city": "Kharkiv", "telephone": "0503334455" },
-    "pet": { "name": "Pet", "birthDate": "2020-04-20" },
-    "visit": { "description": "Follow-up exam", "date": "2025-10-10" }
+    "owner": {
+      "firstName": "Iryna",
+      "lastName": "Boiko",
+      "address": "9 Hrushevskoho Street",
+      "city": "Rivne",
+      "telephone": "0501112233"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2018-11-02"
+    },
+    "visit": {
+      "description": "Ear infection follow-up qwerty",
+      "date": "2026-07-10"
+    }
   },
   "AC-F03-05": {
-    "owner": { "firstName": "Petro", "lastName": "Marchenko",
-               "address": "9 Lesi Ukrainky Street", "city": "Dnipro", "telephone": "0508887766" },
-    "pet": { "name": "Pet", "birthDate": "2020-02-12" },
-    "visit": { "description": "Cancelled checkup", "date": "2025-08-20" }
+    "owner": {
+      "firstName": "Solomiia",
+      "lastName": "Tkachenko",
+      "address": "14 Lesi Ukrainky Avenue",
+      "city": "Poltava",
+      "telephone": "0509876543"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2017-09-25"
+    },
+    "visit": {
+      "description": "Cancelled checkup qwerty",
+      "date": "2026-07-20"
+    }
   },
   "AC-F03-06": {
-    "owner": { "firstName": "Halyna", "lastName": "Poliakova",
-               "address": "3 Nezalezhnosti Avenue", "city": "Vinnytsia", "telephone": "0502223344" },
-    "pet": { "name": "Pet", "birthDate": "2020-01-05" },
-    "visit": { "description": "First checkup", "date": "2025-06-01" },
-    "visit2": { "description": "Second checkup", "date": "2025-06-15" }
+    "owner": {
+      "firstName": "Taras",
+      "lastName": "Symonenko",
+      "address": "3 Sadova Street",
+      "city": "Chernihiv",
+      "telephone": "0507654321"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2019-08-04"
+    },
+    "visit": {
+      "description": "Dental cleaning qwerty",
+      "date": "2026-05-12"
+    },
+    "secondVisit": {
+      "description": "Allergy check qwerty",
+      "date": "2026-05-19"
+    }
   }
 }

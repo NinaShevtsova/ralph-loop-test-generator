@@ -213,6 +213,173 @@ export function forbiddenApis(source) {
 // `\s+` between the two words, because `Scenario  Outline:` with two spaces slipped past. Gherkin
 // prose is excluded first: `# Examples: see the AC list` and `Examples: none` inside a `"""` docstring
 // both used to REJECT a legitimate turn, and a false positive here costs an iteration.
+/*
+ * Scenarios where a `When` is not answered by a `Then` before the next one -- rubric item 4.
+ *
+ * The prompt states this rule in one sentence ("each AC step is one `When` (exactly one request)
+ * followed by its `Then`") and the rule was still broken: measured on AC-F01-02, where `When the
+ * owner's details are updated` ran straight into a second `When` with nothing asserted in between,
+ * and the judge spent $2.26 saying so. A request whose result nothing looks at is a step that cannot
+ * fail, which is the same defect as an assertion that cannot fail -- it just hides one level up.
+ *
+ * `And`/`But` continue whichever primary keyword opened the block, which is what makes this a walk
+ * rather than a regex: `When ... And ...` is one two-line request block, and the `Then` that answers
+ * it may itself be `Then ... And ...`.
+ */
+export function whenWithoutThen(feature) {
+  const problems = [];
+  let scenario = null;
+  let openWhen = null;
+  let answered = true;
+  let requests = 0;
+  let keyword = null;
+
+  const closeScenario = () => {
+    if (openWhen === null) return;
+    if (!answered) {
+      problems.push(`${scenario}: "${openWhen.text}" (line ${openWhen.line}) has no Then after it`);
+    } else if (requests > 1) {
+      problems.push(
+        `${scenario}: "${openWhen.text}" (line ${openWhen.line}) is ${requests} requests before one Then`
+      );
+    }
+  };
+
+  withoutGherkinProse(feature)
+    .split('\n')
+    .forEach((raw, index) => {
+      const line = raw.trim();
+      const scenarioTitle = /^Scenario\s*:\s*(.+)$/.exec(line);
+      if (scenarioTitle !== null) {
+        closeScenario();
+        scenario = scenarioTitle[1].trim();
+        openWhen = null;
+        answered = true;
+        requests = 0;
+        keyword = null;
+        return;
+      }
+      if (scenario === null) return;
+
+      const step = /^(Given|When|Then|And|But)\s+(.*)$/.exec(line);
+      if (step === null) return;
+      const [, word, text] = step;
+      if (word !== 'And' && word !== 'But') keyword = word;
+
+      if (word === 'When') {
+        closeScenario();
+        openWhen = { text, line: index + 1 };
+        answered = false;
+        requests = 1;
+      } else if (keyword === 'When' && openWhen !== null) {
+        // An `And` continuing a `When` block is a SECOND request in one AC step. The rule's own
+        // message promised "exactly one request" while the walk only looked for a following `Then`,
+        // so two requests answered by one assertion passed. Either enforce the promise or stop
+        // making it; this enforces it.
+        requests += 1;
+      } else if (keyword === 'Then' && openWhen !== null) {
+        answered = true;
+      }
+    });
+
+  closeScenario();
+  return problems;
+}
+
+/*
+ * Service calls in a step definition that nobody checked the response code of -- the POSITIVE form of
+ * a rule that used to be written backwards.
+ *
+ * The first version forbade a spelling: `StatusCode.Should(` must not appear. Two things were wrong
+ * with that, both measured. It caught ONE of five equivalent ways to write the same assertion -- a
+ * local variable, `Assert.That`, an int cast and a lambda all walked past it. And on a project that
+ * asserts another way it could never match at all, so every file collected a green line saying the
+ * codes had been checked when nothing had looked.
+ *
+ * Asking the opposite question fixes both. "Every service call ends in a check" cannot be satisfied by
+ * rewording an assertion, because it is not about the assertion; and when no service call is found at
+ * all the answer is "nothing to check here", which is honest, rather than a pass nobody earned.
+ *
+ * Reads a whole method body rather than a line, because C# lets the call and the check be separate
+ * statements: `var r = await _owners.Get(id); _check.Expect(r, OK);` is correct and a line-wise rule
+ * would reject it.
+ */
+const AWAIT_SERVICE_CALL = /await\s+_[a-z]\w*\.[A-Z]\w*\(/;
+
+// The same pattern with /g, for counting. Kept separate because a global regex carries lastIndex
+// between calls, so the one used with .test() must not have the flag.
+const AWAIT_SERVICE_CALL_ALL = new RegExp(AWAIT_SERVICE_CALL.source, 'g');
+
+export function uncheckedServiceCalls(sources, { checkedBy } = {}) {
+  const terminators = checkedBy ?? ['Expect', 'EnsureStatus'];
+  const problems = [];
+
+  for (const source of sources ?? []) {
+    const text = withoutLineComments(source.text ?? '');
+    for (const body of methodBodies(text)) {
+      const calls = [...body.text.matchAll(AWAIT_SERVICE_CALL_ALL)];
+      if (calls.length === 0) continue;
+      if (terminators.some((name) => body.text.includes(`${name}(`))) continue;
+      problems.push({
+        path: source.path,
+        line: body.line,
+        method: body.name,
+        calls: calls.length,
+      });
+    }
+  }
+
+  return problems;
+}
+
+/** Whether any step source calls a service at all — the premise this rule rests on. */
+export function callsAnyService(sources) {
+  return (sources ?? []).some((source) =>
+    AWAIT_SERVICE_CALL.test(withoutLineComments(source.text ?? ''))
+  );
+}
+
+/** `//` comment bodies blanked, so a rule quoted in prose is not read as code. Line count is kept. */
+function withoutLineComments(text) {
+  return text
+    .split('\n')
+    .map((line) => line.replace(/\s*\/\/.*$/, ''))
+    .join('\n');
+}
+
+/*
+ * Every `public`/`private` method body in a C# source, by brace depth.
+ *
+ * Depth counting rather than a regex because a method body contains braces of its own -- object
+ * initialisers, lambdas, nested blocks -- and the rule above has to see the WHOLE body to know
+ * whether the check is in it.
+ */
+function methodBodies(text) {
+  const lines = text.split('\n');
+  const bodies = [];
+  const signature = /^\s*(?:public|private|internal|protected)\s.*\s([A-Za-z_]\w*)\s*\([^;]*\)\s*$/;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const m = signature.exec(lines[i]);
+    if (m === null) continue;
+
+    let depth = 0;
+    let started = false;
+    const collected = [];
+    for (let j = i; j < lines.length; j += 1) {
+      for (const ch of lines[j]) {
+        if (ch === '{') { depth += 1; started = true; }
+        else if (ch === '}') depth -= 1;
+      }
+      collected.push(lines[j]);
+      if (started && depth === 0) break;
+    }
+    if (started) bodies.push({ name: m[1], line: i + 1, text: collected.join('\n') });
+  }
+
+  return bodies;
+}
+
 /** `Scenario Outline` / `Examples` in a feature file. */
 export function scenarioOutlines(feature) {
   return scan(

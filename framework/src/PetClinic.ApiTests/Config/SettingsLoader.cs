@@ -4,29 +4,30 @@ namespace PetClinic.ApiTests.Config;
 
 public static class SettingsLoader
 {
-    private const string BaseUrlOverrideVariable = "PETCLINIC_BASE_URL";
+    private const string BaseUrlEnvironmentVariable = "PETCLINIC_BASE_URL";
 
     public static TestSettings Load()
     {
         var configuration = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: false)
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
             .Build();
 
-        var baseUrl = Environment.GetEnvironmentVariable(BaseUrlOverrideVariable);
-        if (string.IsNullOrWhiteSpace(baseUrl))
+        var baseUrl = configuration["baseUrl"]
+            ?? throw new InvalidOperationException("appsettings.json is missing 'baseUrl'.");
+        var timeoutMs = int.Parse(configuration["timeoutMs"]
+            ?? throw new InvalidOperationException("appsettings.json is missing 'timeoutMs'."));
+        var readinessPath = configuration["readinessPath"]
+            ?? throw new InvalidOperationException("appsettings.json is missing 'readinessPath'.");
+        var readinessTimeoutMs = int.Parse(configuration["readinessTimeoutMs"]
+            ?? throw new InvalidOperationException("appsettings.json is missing 'readinessTimeoutMs'."));
+
+        var baseUrlOverride = Environment.GetEnvironmentVariable(BaseUrlEnvironmentVariable);
+        if (!string.IsNullOrWhiteSpace(baseUrlOverride))
         {
-            baseUrl = Require(configuration, "baseUrl");
+            baseUrl = baseUrlOverride;
         }
 
-        return new TestSettings(
-            baseUrl,
-            int.Parse(Require(configuration, "timeoutMs")),
-            Require(configuration, "readinessPath"),
-            int.Parse(Require(configuration, "readinessTimeoutMs")));
+        return new TestSettings(baseUrl, timeoutMs, readinessPath, readinessTimeoutMs);
     }
-
-    private static string Require(IConfiguration configuration, string key) =>
-        configuration[key] ?? throw new InvalidOperationException(
-            $"appsettings.json is missing the required '{key}' setting.");
 }

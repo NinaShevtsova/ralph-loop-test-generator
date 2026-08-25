@@ -60,6 +60,49 @@ const SOLUTION = 'framework/ApiTests.sln';
  * reached DELETE would leave records behind in a database the next run is graded against.
  */
 export const MUTATIONS = {
+  /*
+   * The framework's own contracts, not the scenarios'. Everything above breaks a FIELD and asks which
+   * acceptance criteria notice. These break a CALL and ask how the framework reports it.
+   *
+   * They exist because the contracts they cover were, until this file, held up by prose alone.
+   * Measured: with the role split removed from all ten call sites of `OwnerSteps.cs`, `dotnet build`,
+   * `check:scaffold`, `check:invariants`, `check:tests` and all 17 tests stayed green. Nothing in the
+   * harness could tell the difference, so nothing was enforcing it.
+   */
+
+  'reject-owner-creation': {
+    description: 'POST /owners answers 500, in a step that is a When for one AC and a Given for three',
+    expect: ['AC-F01-01', 'AC-F01-02', 'AC-F01-03', 'AC-F01-04'],
+    applies: ({ method, pathname }) => method === 'POST' && /\/owners\d?$/.test(pathname),
+    mutate: () => ({ status: 500, body: { error: 'mutation-control' } }),
+    proves: {
+      // `an owner is registered` is the criterion of AC-F01-01 and the precondition of the other
+      // three. One method, two roles -- which is why the role cannot be chosen at the call site.
+      'a When reports the unmet criterion as a FAILURE, with a because':
+        /AC_F01_01[\s\S]*?Expected response\.StatusCode[\s\S]*?because the contract/,
+      'a Given reports the broken precondition as an ERROR':
+        /AC_F01_02[\s\S]*?System\.InvalidOperationException/,
+      // The same output proves the message carries the request, which no other check looks at.
+      'the failure names the verb and the URL':
+        /POST http:\/\/[^\s]+\/owners → 500/,
+    },
+  },
+
+  'refuse-visit-delete': {
+    description: 'DELETE /visits/{id} answers 500, which only teardown ever calls',
+    // Teardown runs after the scenario, so the failure lands on whichever scenarios created a visit.
+    expect: ['AC-F01-04'],
+    applies: ({ method, pathname }) => method === 'DELETE' && /\/visits\/\d+$/.test(pathname),
+    mutate: () => ({ status: 500, body: { error: 'mutation-control' } }),
+    proves: {
+      // The defect this replaces: the clear sat after the loop and the throw left the three later
+      // lists undrained, so one 500 on a visit leaked an owner, a pet and a pet type into the next
+      // scenario. If the later passes still run, the message names the visit route and nothing else.
+      'teardown still names the visit delete it could not do':
+        /DELETE http:\/\/[^\s]+\/visits\/\d+ → 500/,
+    },
+  },
+
   'drop-pet-name': {
     description: 'GET /pets/{id} answers without the `name` field',
     expect: ['AC-F02-01'],
@@ -165,8 +208,24 @@ export function parseFailures(output) {
  * numbers: tests failed but their names could not be read, which is a fault in this script rather
  * than a verdict on the suite. Reporting it as a red control would send someone to debug the tests.
  */
-export function gradeMutation(mutation, { failed, total, acIds }) {
+export function gradeMutation(mutation, { failed, total, acIds, output }) {
   const missing = mutation.expect.filter((ac) => !acIds.has(ac));
+
+  /*
+   * The contracts this mutation is supposed to demonstrate, beyond "something went red".
+   *
+   * `expect` answers WHICH tests failed. Some contracts are about HOW they failed, and those cannot
+   * be seen from a set of ids: that a precondition surfaces as an error while an unmet criterion
+   * surfaces as a failure, that the message names the request. Both are in the same output this
+   * function already receives the counts from, so proving them needs no new machinery — only the
+   * question being asked.
+   *
+   * Missing output with a `proves` block is UNPROVEN, never satisfied. A contract that could not be
+   * looked at has not been demonstrated, and the whole point of this file is to refuse that trade.
+   */
+  const unproven = Object.entries(mutation.proves ?? {})
+    .filter(([, pattern]) => typeof output !== 'string' || !pattern.test(output))
+    .map(([label]) => label);
   const unattributed = failed !== null && failed > 0 && acIds.size === 0;
 
   /*
@@ -187,8 +246,9 @@ export function gradeMutation(mutation, { failed, total, acIds }) {
   const indiscriminate = failed !== null && total !== null && total > 0 && failed >= total;
 
   return {
-    ok: missing.length === 0 && !unattributed && !indiscriminate,
+    ok: missing.length === 0 && unproven.length === 0 && !unattributed && !indiscriminate,
     missing,
+    unproven,
     unattributed,
     indiscriminate,
     observed: [...acIds].sort(),
@@ -447,7 +507,7 @@ if (invocation(import.meta.url, process.argv[1]) === 'cli') {
       const suite = await runSuite(proxyUrl);
       server.close();
 
-      const grade = gradeMutation(mutation, parseFailures(suite.out));
+      const grade = gradeMutation(mutation, { ...parseFailures(suite.out), output: suite.out });
       results.push({ name, ...grade });
 
       const scale = `${grade.failed ?? '?'}/${grade.total ?? '?'} failed`;
@@ -457,6 +517,12 @@ if (invocation(import.meta.url, process.argv[1]) === 'cli') {
         console.log(`  ?? ${grade.failed} test(s) failed but no AC id could be read from their names`);
       } else if (grade.ok) {
         console.log(`  ok  ${mutation.expect.join(', ')} went red (${scale}; observed: ${grade.observed.join(', ')})`);
+        for (const label of Object.keys(mutation.proves ?? {})) console.log(`      proved: ${label}`);
+      } else if (grade.unproven.length > 0 && grade.missing.length === 0) {
+        // Red in the right places and still not a proof: the contract this mutation exists to
+        // demonstrate did not show up in the output.
+        console.log(`  MISS the right tests went red, but not for the stated reason (${scale})`);
+        for (const label of grade.unproven) console.log(`      unproven: ${label}`);
       } else {
         console.log(`  MISS ${grade.missing.join(', ')} stayed GREEN (${scale}; observed: ${grade.observed.join(', ') || 'none'})`);
       }

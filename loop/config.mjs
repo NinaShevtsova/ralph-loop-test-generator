@@ -73,7 +73,12 @@ export const STAGES = {
 // envelope carries `usage` and `total_cost_usd` beside the verdict. `loop/telemetry.mjs` unwraps it
 // and falls back to raw text for any JUDGE_CMD that does not speak it, so the two pluggable tools
 // this repository documents keep working unchanged.
-const DEFAULT_AGENT_CMD = 'claude -p --model claude-sonnet-5 --permission-mode auto';
+// `--output-format stream-json --verbose` is what makes the agent's cost recordable. The stream emits
+// one JSON object per line AS THE TURN RUNS, so the runner relays the text to the console and takes
+// `usage` and `total_cost_usd` from the final object — the trade that used to be "watch it or price it"
+// is no longer a trade. `--verbose` is required by the CLI for this format under `--print`.
+const DEFAULT_AGENT_CMD =
+  'claude -p --model claude-sonnet-5 --permission-mode auto --output-format stream-json --verbose';
 const DEFAULT_JUDGE_CMD =
   'claude -p --model claude-opus-5 --permission-mode plan --output-format json';
 

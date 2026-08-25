@@ -1,11 +1,11 @@
 @F02
 Feature: F-02 Owner's pet: adding, changing, deleting
 
-  A pet can be added only through the owner details, while it can be viewed in three places:
-  inside the owner details, in its own pet details, and by opening the pet from the owner
-  details. A pet can be changed by two different requests, but deleted only directly. The flow
-  verifies that all these places show one and the same record rather than independent copies,
-  and that deleting a pet does not affect the owner.
+  A pet can be added only through the owner details, while it can be viewed in three places: inside
+  the owner details, in its own pet details, and by opening the pet from the owner details. A pet can
+  be changed by two different requests, but deleted only directly. The flow verifies that all these
+  places show one and the same record rather than independent copies, and that deleting a pet does
+  not affect the owner.
 
   @AC-F02-01 @US-02
   Scenario: AC-F02-01 an added pet is visible in the owner details and in its own details with the same data
@@ -15,11 +15,11 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     When a pet is added to the owner
     Then the created pet has an assigned id, the submitted values and a link to the owner
     When the owner details are opened
-    Then the owner details show one pet matching the added pet's data
+    Then the owner details show the added pet with the submitted values
     When the pet details are opened
-    Then the pet details match the added pet's data and the pet type from the directory
+    Then the pet details match the addition and the type from the directory
     When the pet is opened from the owner details
-    Then the pet from the owner details matches the pet's own details in every field
+    Then the pet opened from the owner details matches the pet details in every field
 
   @AC-F02-02 @US-04
   Scenario: AC-F02-02 an added pet appears in the clinic-wide pets list
@@ -27,32 +27,32 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     And the pet types directory is requested
     When a pet is added to the owner
     Then the created pet has an assigned id, the submitted values and a link to the owner
-    When the pets list is requested
-    Then the pets list contains exactly one entry for the added pet with the submitted values and its owner link
+    When the pets directory is requested
+    Then the pet appears exactly once in the pets list with the submitted values
 
   @AC-F02-03 @US-02
   Scenario: AC-F02-03 a rename in the pet details is visible in the owner details
     Given an owner is registered
     And the pet types directory is requested
     And a pet is added to the owner
-    When the pet's own details are updated
-    Then the pet update returns an empty body
+    When the pet details are updated
+    Then the pet update returns no pet data
     When the owner details are opened
-    Then the owner details show the pet with the new name
+    Then the owner details show the pet with its new name
     When the pet is opened from the owner details
-    Then the pet from the owner details shows the new name
+    Then the pet opened from the owner details carries the new name
 
   @AC-F02-04 @US-02
   Scenario: AC-F02-04 a rename through the owner details is visible in the pet details
     Given an owner is registered
     And the pet types directory is requested
     And a pet is added to the owner
-    When the pet is updated through the owner's details
-    Then the pet update returns an empty body
+    When the pet is updated through the owner
+    Then the pet update through the owner details returns no pet data
     When the pet details are opened
-    Then the pet details show the new name
+    Then the pet details show the name that was set through the owner
     When the owner details are opened
-    Then the owner details show the pet with the new name
+    Then the owner details show the pet with its new name
 
   @AC-F02-05 @US-02 @US-05
   Scenario: AC-F02-05 editing a pet's data does not wipe the visit history
@@ -61,14 +61,13 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     And a pet is added to the owner
     And a visit is recorded for the pet
     When the pet details are opened
-    Then the pet details show the recorded visit
-    When the pet's own details are updated
-    Then the pet update returns an empty body
+    Then the pet details show the visit that was recorded for it
+    When the pet details are updated
+    Then the pet update returns no pet data
     When the pet details are opened
-    Then the pet details show the new name
-    And the pet details show the recorded visit
+    Then the pet details show the new name and an unaffected visit history
     When the visit details are opened
-    Then the visit details show the pet link and unchanged data
+    Then the visit still shows the description and date it was recorded with
 
   @AC-F02-06 @US-02 @US-04
   Scenario: AC-F02-06 deleting one pet does not affect the owner's second pet
@@ -77,14 +76,15 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     When a pet is added to the owner
     Then the created pet has an assigned id, the submitted values and a link to the owner
     When a second pet is added to the owner
-    Then the second pet has an assigned id different from the first pet's
+    Then the second pet has its own id, distinct from the first pet
     When the owner details are opened
-    Then the owner details show both pets with their own distinct names
-    When the pet is deleted
+    Then the owner details show both pets with their own names
+    When the first pet is deleted
+    Then the first pet's deletion returns no pet data
     When the owner details are opened
-    Then the owner details show only the second pet, unaffected by the first pet's deletion
-    When the second pet's details are opened
-    Then the second pet's own details have not changed after the first pet was deleted
+    Then the owner details show only the second pet with its original name
+    When the pet details are opened
+    Then the second pet's details are unchanged after the first pet was deleted
 
   @AC-F02-07 @US-01 @US-03 @US-04
   Scenario: AC-F02-07 a deleted pet cannot be opened in its own details or from the owner details
@@ -92,14 +92,15 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     And the pet types directory is requested
     And a pet is added to the owner
     When the pet is deleted
+    Then the pet deletion returns no pet data
     When an attempt is made to open the pet details
-    Then the pet is reported as not found with an empty body
+    Then the pet details are no longer available
     When an attempt is made to open the pet from the owner details
-    Then the pet is reported as not found from the owner details too
+    Then the pet is no longer available from the owner details
     When the owner details are opened
-    Then the owner details show the previous contact info and an empty pets list
-    When the pets list is requested
-    Then the pets list has no entry for the deleted pet
+    Then the owner details show the submitted values and match the registration response
+    When the pets directory is requested
+    Then the pet is missing from the pets list
 
   @AC-F02-08 @US-03
   Scenario: AC-F02-08 a pet cannot be opened through another owner's details
@@ -108,34 +109,35 @@ Feature: F-02 Owner's pet: adding, changing, deleting
     And a pet is added to the owner
     And a second owner is registered
     When the pet is opened from the owner details
-    Then the pet from the owner details belongs to its own owner
+    Then the pet opened from the owner details belongs to its own owner
     When an attempt is made to open the pet from the second owner's details
-    Then the pet is reported as not found from the second owner's details too
+    Then the pet is not available from the second owner's details
 
   @AC-F02-09 @US-06
   Scenario: AC-F02-09 a pet cannot be added to a non-existent owner
     Given an owner is registered
     And the pet types directory is requested
-    And the owner is deregistered
+    And the owner is deleted
     When an attempt is made to add a pet to the deleted owner
-    Then the pet is reported as not found for the deleted owner
-    When the pets list is requested
-    Then the pets list has no entry for the pet that was never added
+    Then the pet addition to the deleted owner returns no pet data
+    When the pets directory is requested
+    Then the pet from the failed addition is missing from the pets list
 
   @AC-F02-10 @US-03
   Scenario: AC-F02-10 deleting a pet removes the visits but preserves the owner and the pet types directory
-    Given a new pet type is added to the directory
+    Given a pet type is added to the directory
     And an owner is registered
     And a pet is added to the owner
     And a visit is recorded for the pet
     When the pet is deleted
+    Then the pet deletion returns no pet data
     When an attempt is made to open the pet details
-    Then the pet is reported as not found with an empty body
+    Then the pet details are no longer available
     When an attempt is made to open the visit details
-    Then the visit is reported as not found with an empty body
+    Then the visit details are no longer available
     When the owner details are opened
-    Then the owner details show the previous contact info and an empty pets list
+    Then the owner details show the submitted values and match the registration response
     When the pet type details are opened
-    Then the pet type still exists in the directory with its name unchanged
+    Then the pet type exists, unchanged
     When the visits log is requested
-    Then the visits log shows no trace of the removed visit
+    Then the visit is missing from the visits list

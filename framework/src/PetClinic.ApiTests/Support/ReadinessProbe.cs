@@ -1,53 +1,61 @@
+using System.Diagnostics;
 using System.Net;
 using PetClinic.ApiTests.Config;
 using PetClinic.ApiTests.Http;
+using RestSharp;
 
 namespace PetClinic.ApiTests.Support;
 
-// D-10: this probe only waits for GET /pettypes to answer 200 — it never restarts the SUT.
-// Restarting lives in scripts/sut.mjs, so the delivered framework still runs against a shared
-// environment that someone else started.
-public static class ReadinessProbe
+// Polls readinessPath from appsettings.json — configured to /pettypes, the one route every
+// scenario depends on regardless of flow — until it answers 200, honouring readinessTimeoutMs. It
+// only ever waits: restarting the SUT belongs to scripts/sut.mjs, not the delivered framework
+// (D-10), so a probe that times out here fails loud instead of reaching for a restart.
+public sealed class ReadinessProbe
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
 
-    public static Task WaitUntilReady() => WaitUntilReady(ApiClient.Shared, SettingsLoader.Load());
+    private readonly ApiClient _client;
+    private readonly TestSettings _settings;
 
-    public static async Task WaitUntilReady(ApiClient client, TestSettings settings)
+    public ReadinessProbe(ApiClient client, TestSettings settings)
     {
-        var path = settings.ReadinessPath.TrimStart('/');
-        var url = settings.BaseUrl.TrimEnd('/') + "/" + path;
-        var deadline = DateTime.UtcNow.AddMilliseconds(settings.ReadinessTimeoutMs);
+        _client = client;
+        _settings = settings;
+    }
 
-        while (true)
+    public async Task WaitUntilReadyAsync()
+    {
+        var path = _settings.ReadinessPath.TrimStart('/');
+        var timeout = TimeSpan.FromMilliseconds(_settings.ReadinessTimeoutMs);
+        var stopwatch = Stopwatch.StartNew();
+        Exception? lastFailure = null;
+
+        while (stopwatch.Elapsed < timeout)
         {
-            if (await IsReady(client, path))
+            try
             {
-                return;
+                var request = _client.NewRequest(Method.Get).WithPath(path).Build();
+                var response = await _client.GetAsync<object?>(request);
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    return;
+                }
             }
-
-            if (DateTime.UtcNow >= deadline)
+            catch (Exception ex)
             {
-                throw new TimeoutException(
-                    $"SUT at {url} did not become ready within {settings.ReadinessTimeoutMs} ms.");
+                lastFailure = ex;
             }
 
             await Task.Delay(PollInterval);
         }
-    }
 
-    // Unlike ResourceTracker's 404-only swallow, every failure here means "not ready yet": before
-    // the SUT is listening, the request fails at the transport level rather than with a status code.
-    private static async Task<bool> IsReady(ApiClient client, string path)
-    {
-        try
+        var url = $"{_settings.BaseUrl}/{path}";
+        var message = $"SUT at {url} was not ready within {_settings.ReadinessTimeoutMs} ms.";
+        if (lastFailure is not null)
         {
-            var response = await client.Get<object>(path);
-            return response.StatusCode == HttpStatusCode.OK;
+            message += $" Last failure: {lastFailure.Message}";
         }
-        catch
-        {
-            return false;
-        }
+
+        throw new TimeoutException(message);
     }
 }

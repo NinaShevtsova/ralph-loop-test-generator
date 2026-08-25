@@ -22,7 +22,11 @@
 // rubbish". And `dotnet test` runs the WHOLE suite — that is the only thing which catches an
 // iteration that changed a shared step and broke an already-accepted scenario.
 
-import { SCAFFOLD_ROWS } from '../scripts/manifest.scaffold.mjs';
+import {
+  SCAFFOLD_ROWS,
+  SMOKE_SUITE_ENTRY,
+  rowNeeds,
+} from '../scripts/manifest.scaffold.mjs';
 
 const SOLUTION = 'framework/ApiTests.sln';
 
@@ -60,6 +64,26 @@ export function gateSteps(stage, { acId, row, base = 'HEAD~1' } = {}) {
           `the manifest knows ${SCAFFOLD_ROWS.join(', ')}`
       );
     }
+    /*
+     * Only the steps that can say something about THIS row.
+     *
+     * Tests enter the suite in the last row of the stage, so before it `dotnet test` reports zero
+     * tests -- which the stage-0 prompt itself calls a pass -- and `sut reset` restarts Docker and
+     * waits for readiness to make that possible. Measured: ~25 of ~27 stage-0 gate runs did exactly
+     * that, at ~27 s of Docker restart and ~12 s of test host each.
+     *
+     * The boundary comes from the MANIFEST (`rowNeeds`), not from a wave number. A wave number would
+     * be a magic constant here and in the manifest both, and this file stays pure data with no
+     * filesystem access -- which is what makes the step ORDER unit-testable.
+     */
+    const needsSuite = rowNeeds(row, SMOKE_SUITE_ENTRY);
+    if (needsSuite === null) {
+      throw new Error(
+        `gateSteps: the manifest cannot place row ${JSON.stringify(row)} against the smoke suite — ` +
+          'SMOKE_SUITE_ENTRY has drifted from the manifest'
+      );
+    }
+
     return [
       {
         name: 'check:scaffold',
@@ -67,8 +91,39 @@ export function gateSteps(stage, { acId, row, base = 'HEAD~1' } = {}) {
         args: ['scripts/check-scaffold.mjs', '--through-row', row, '--quiet'],
       },
       { name: 'dotnet build', cmd: 'dotnet', args: ['build', SOLUTION, '--nologo'] },
-      { name: 'sut reset', cmd: process.execPath, args: ['scripts/sut.mjs', 'reset'] },
-      { name: 'dotnet test', cmd: 'dotnet', args: ['test', SOLUTION, '--nologo'] },
+      // Scoped like check:scaffold, and for the same reason: unscoped it is red by construction until
+      // the last row, because I3 needs the services to exist and I6 needs the 22 steps.
+      {
+        name: 'check:invariants',
+        cmd: process.execPath,
+        args: ['scripts/check-invariants.mjs', '--through-row', row, '--quiet'],
+      },
+      /*
+       * No filtered unit run here, and that is a MEASURED correction rather than an omission.
+       *
+       * Reqnroll generates an assembly-level `[SetUpFixture]` (`obj/.../NUnit.AssemblyHooks.*.cs`)
+       * whose `[OneTimeSetUp]` calls `TestRunnerManager.OnTestRunStartAsync`, which fires
+       * `ScenarioHooks`'s `[BeforeTestRun]` -> `ReadinessProbe.WaitUntilReady()` on a 90 s budget.
+       * NUnit runs that fixture for ANY test run in the assembly, so `--filter TestCategory=Unit`
+       * waits for the SUT as well. Measured with Docker stopped: 96 s and RED.
+       *
+       * Worse, no gate below S14 has a `sut reset` step to bring the container up, so on a
+       * from-scratch run every such gate would be red and `K_FAILURES=3` would end the run at S6.
+       *
+       * Task 11 turns the fix into a stage-0 requirement — readiness moves to `[BeforeScenario]`,
+       * memoised, so a run with no scenarios never touches the network. Once a rebuilt framework
+       * satisfies that, this step can come back, and `UNIT_TEST_ENTRY` in the manifest is the
+       * boundary it will use. It is not imported here until then: an import used only by a comment
+       * reads as a check that is being made.
+       */
+      // D-09: the reset before the run, so a red test means the test is bad rather than the database
+      // being dirty.
+      ...(needsSuite
+        ? [
+            { name: 'sut reset', cmd: process.execPath, args: ['scripts/sut.mjs', 'reset'] },
+            { name: 'dotnet test', cmd: 'dotnet', args: ['test', SOLUTION, '--nologo'] },
+          ]
+        : []),
     ];
   }
 
@@ -131,8 +186,15 @@ export function preGateSteps(stage, { wave } = {}) {
           ]
         : []),
       { name: 'dotnet build', cmd: 'dotnet', args: ['build', SOLUTION, '--nologo'] },
-      { name: 'sut reset', cmd: process.execPath, args: ['scripts/sut.mjs', 'reset'] },
-      { name: 'dotnet test', cmd: 'dotnet', args: ['test', SOLUTION, '--nologo'] },
+      /*
+       * No `sut reset` and no `dotnet test`, and that is not a shortcut.
+       *
+       * A pre-gate asks what is already complete, which is the waves BEFORE the target's own. The only
+       * row that brings executable tests into the suite is the LAST row of the stage, so a scaffold
+       * pre-gate can never have a test to run — tests/manifest.test.mjs pins that fact so this comment
+       * cannot quietly stop being true. What remains is the question the pre-gate exists for: are the
+       * finished waves' files there, and does the tree still compile.
+       */
     ];
   }
 
@@ -159,4 +221,24 @@ export function runGate(steps, { root, run }) {
     if (!result.ok) return { green: false, failedAt: step.name, log: log.join('\n') };
   }
   return { green: true, failedAt: null, log: log.join('\n') };
+}
+
+/**
+ * Whether the pre-gate can be skipped because the last green gate already proved this exact tree.
+ *
+ * A green POST-gate for row N checked the manifest through row N and compiled the tree. The pre-gate
+ * for row N+1 asks for the manifest through the wave BEFORE N+1's own — strictly earlier rows — and
+ * compiles the same tree. On an unmoved HEAD with nothing uncommitted under `framework/`, that is a
+ * subset of what has just been proven, so running it again costs a build and answers nothing new.
+ *
+ * Pure, and it answers `false` for everything it is not certain about. Every input this cannot vouch
+ * for — a fresh process with nothing remembered, an empty string from a failed `git` probe, a dirty
+ * tree — RUNS the gate. A pre-gate skipped when it was needed sends the agent onto a red foundation,
+ * which is the one thing the pre-gate exists to prevent.
+ */
+export function skipPreGate({ lastGreenSha, headSha, dirty } = {}) {
+  if (dirty) return false;
+  if (typeof lastGreenSha !== 'string' || lastGreenSha === '') return false;
+  if (typeof headSha !== 'string' || headSha === '') return false;
+  return lastGreenSha === headSha;
 }
