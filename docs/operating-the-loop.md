@@ -2,6 +2,16 @@
 
 Bring the environment up, run the tests, watch the loop rebuild everything, add criteria of your own.
 
+| What you want to do | Go to | Reset needed? |
+|---|---|---|
+| Run the tests that already exist | [§1](#1-bring-the-environment-up), [§2](#2-run-the-tests) | — |
+| **Add tests to a flow that exists** | [§4](#4-add-a-new-acceptance-criterion-to-an-existing-flow) | **no** |
+| **Add a whole new flow** | [§5](#5-add-a-whole-new-flow) | **no** |
+| **Wipe everything and rebuild from nothing** | [§3](#3-rebuild-everything-from-scratch) | yes — [§7](#7-the-reset-command) |
+| See what a run cost, or whether the tests can fail | [§6](#6-measuring-the-loop-itself) | — |
+
+Section 1 is required before anything that talks to the application.
+
 ---
 
 ## 1. Bring the environment up
@@ -51,7 +61,16 @@ dotnet test framework/ApiTests.sln --nologo
 
 From Visual Studio: do section 1 first, then open `framework/ApiTests.sln` and run.
 
-Expect **23 passing** — 3 smoke tests plus the 20 generated scenarios.
+Expect **33 passing** — the 20 generated scenarios, a wiring canary, 3 smoke tests and 9 unit tests.
+
+The 9 unit tests need **no** application: they cover the framework's own primitives — that the
+unique-name generator never repeats, that dates are written in one format whatever the machine's
+locale, that a failure message carries both status codes and the response body. Useful when Docker
+is down and you only want to know whether the foundation still holds:
+
+```bash
+dotnet test framework/ApiTests.sln --nologo --filter TestCategory=Unit
+```
 
 If a result looks wrong, put the database back to its seeded state and try again:
 
@@ -68,7 +87,11 @@ npm run sut -- reset
 It regenerates both halves: first the framework skeleton — solution, HTTP client, service objects,
 data provider, hooks, step definitions — then the tests from your acceptance criteria.
 
-About 34 iterations — batches, over more than one sitting.
+About **36 iterations** if it goes like the last recorded run — 8 to build the framework and 28 for
+the twenty criteria. Budget for more: the recorded history needed **three** attempts and 25
+iterations before the framework stuck. `loop/runs/` holds the actual numbers of every run, cost
+included.
+Batches, over more than one sitting.
 
 **Step 1 — tag a return point.** The reset deletes `framework/` from the working tree but not from
 history; the tag just makes the way back obvious.
@@ -79,7 +102,7 @@ point had a working framework, twenty tests, or half of each. This repository al
 `git tag -n` shows an existing tag as `backup-before-squash Tmp2`.
 
 ```bash
-git tag -a framework-and-20-tests -m "stage 0 and stage 1 complete: 23 tests green against a live PetClinic"
+git tag -a framework-and-20-tests -m "stage 0 and stage 1 complete: 33 tests green against a live PetClinic"
 ```
 
 Then the list explains itself:
@@ -198,9 +221,13 @@ MAX_ITER=2 node loop/ralph.mjs --stage tests --flow F-01
 
 Commit between batches, as in section 3, step 6.
 
-The new scenarios go into the **same** feature file and reuse the existing step definitions — 58 of
-them at last count, 51 already used by more than one scenario. Expect most new criteria to need one or
+The new scenarios go into the **same** feature file and reuse the existing step definitions — 98 of
+them at last count, 42 already used by more than one scenario. Expect most new criteria to need one or
 two new `Then` steps at most.
+
+`npm run steps` regenerates `loop/STEPS.md`, the catalogue the agent is given before every turn.
+Worth a look before writing a criterion: if a step for what you want already exists, the agent will
+reuse it, and the gate rejects a reworded copy of one that does.
 
 ---
 
@@ -212,8 +239,13 @@ A flow is a group of related criteria sharing one feature file and one data file
 (`F-01`), owners and pets (`F-02`), pets and visits (`F-03`). Criteria about veterinarians fit none of
 them, and filing them under `pet-visit-flow` gives the next reader a wrong name to un-learn.
 
-So: section 4, plus three steps first — tell the loop the flow exists, give it a document to read the
-criteria from, and a file to write the scenarios into.
+So: section 4, plus two steps first — tell the loop the flow exists, and give it a document to read
+the criteria from.
+
+**No reset, no rebuild, no C# change.** That was not always true: the list of data files used to be
+written into `TestData/TestDataProvider.cs`, a folder the tests stage may not touch, so a fourth flow
+meant regenerating the whole framework over one line. The data file is now found by the flow's tag,
+and the feature-file skeletons are derived from the flow list rather than listed by hand.
 
 The example below is `F-04`.
 
@@ -224,29 +256,21 @@ The example below is `F-04`.
 ```
 
 That is the only place the flow list lives. Every path is derived from it — the flow document, the
-feature file, the JSON data file. Nothing else needs registering.
+feature file, the JSON data file — and so is the manifest entry a future full rebuild (section 3)
+will use to recreate the skeleton. Nothing else needs registering.
 
 **Step 2 — create the flow document** at `docs/specs/petclinic/flows/F-04-something.md`, with the
 criteria and a "Test plan" table, in the shape of the existing three.
 
-**Step 3 — create an empty feature file** at
-`framework/src/PetClinic.ApiTests/Features/F04-something.feature`:
-
-```gherkin
-Feature: <name>
-
-  <one paragraph on what this flow verifies>
-```
-
-The gate reads this file, so it must exist before the first turn. If you want a future full rebuild
-(section 3) to recreate it, also add it to `scripts/manifest.scaffold.mjs` and give it a row in
-`loop/trackers/scaffold.md` — otherwise a full reset deletes `framework/` and will not put it back.
-
-**Steps 4 to 7** — tracker rows, `**Total:**`, `npm test`, commit, exactly as in section 4. Then:
+**Steps 3 to 6** — tracker rows, `**Total:**`, `npm test`, commit, exactly as in section 4. Then:
 
 ```bash
 MAX_ITER=2 node loop/ralph.mjs --stage tests --flow F-04
 ```
+
+The first turn creates `Features/F04-something.feature` and `Data/F04-something.json` itself — an
+empty skeleton is no longer something you prepare by hand, and the agent is told not to treat its
+absence as a reason to stop.
 
 ---
 
@@ -259,15 +283,23 @@ judge still catches anything, and whether the generated tests can fail at all.
 
 Every `npm run ralph` run appends to `loop/runs/<timestamp>-<stage>[-<slice>].md` as it goes, and
 that file is **committed**. One row per iteration: the target, how the turn ended, the verdict, what
-the judge's call cost, how long it took. A totals block is added when the run stops.
+**both** calls cost, the turn's total, and how long it took. A totals block is added when the run
+stops.
 
 Nothing to run — but do commit it. Two runs of the same slice are meant to be diffed against each
 other, which is how "did that rubric edit help" stops being an opinion. `loop/runs/README.md`
 explains what each column is worth reading for.
 
-The judge's cost is recorded only because the default `JUDGE_CMD` asks for `--output-format json`.
-The **agent's** usage is not captured at all: its output is inherited so the run can be watched, and
-iteration count plus wall clock stand in for it.
+Both sides' usage is recorded: the judge's because `JUDGE_CMD` asks for `--output-format json`, the
+agent's because `AGENT_CMD` asks for `--output-format stream-json --verbose`. The stream prints as
+the turn runs, so watching it and pricing it are no longer a choice between two — which they were,
+and the agent's cost used to go unrecorded for exactly that reason.
+
+**The number to watch is iterations per criterion, not dollars.** Divide `iterations` by the `done`
+count in the totals block. So far: 2.00 on the first flow, then 1.20 and 1.33. The ideal is 1.00,
+and every tenth above it costs roughly $2.7 and nine minutes. Dollars move with token prices, with
+which models are configured, and with a briefing that grows alongside the project; iterations move
+only with how often the agent got it wrong.
 
 ### `npm run eval:judge` — is the judge still catching defects?
 
@@ -327,6 +359,18 @@ For the same reason the control refuses a mutation that turns the **whole** suit
 that would have failed whatever it asserted proves nothing about the field it names, so that outcome
 is reported as `the WHOLE suite went red` and fails the run rather than passing it.
 
+Some mutations demand more than "it went red" — they carry a list of claims that must appear in the
+test output, and a claim that cannot be found there counts as **unproven**, never as satisfied. Two
+of the six exist only for that, and neither one is about a scenario:
+
+- break `POST /owners` and confirm the criterion that **verifies** owner creation reports an unmet
+  check, while the three that need it only as setup report a broken precondition;
+- break `DELETE /visits/{id}` — which only the post-test cleanup ever calls — and confirm the message
+  names the method and the URL.
+
+Both were added after a measurement: with that distinction removed from all ten call sites, the
+build, all three gates and every test stayed green. Nothing in the harness could tell the difference.
+
 It resets the database before every run and puts the environment back afterwards. A single mutation:
 
 ```bash
@@ -336,15 +380,48 @@ npm run control -- --mutation drop-pet-name
 Nothing in `framework/` is touched: the proxy is addressed through `PETCLINIC_BASE_URL`, so the
 delivered tests stay exactly what the client gets.
 
+### `npm run check:invariants` — is the project still built the way we agreed?
+
+Free and instant. It asks the questions no single turn can answer, because the judge is only ever
+shown one turn's changes:
+
+```bash
+npm run check:invariants
+```
+
+Seven checks: exactly one HTTP client, no literal hosts or ports in C#, every route of the contract
+called by a service, the assembly refusing parallel runs, no assembly-wide setup hook, every service
+method reachable from a step, and no step sentence bound twice.
+
+The loop runs this as part of the framework-building gate, scoped to the row in progress. Run it by
+hand after touching anything under `framework/src/` — a project that builds and passes every test can
+still be failing to call a third of the contract's routes, and nothing else notices.
+
 ---
 
 ## 7. The reset command
 
 `npm run reset` resets both trackers, deletes the journal, `STEPS.md` and the verdicts, and removes
-`framework/` — everything the loop produced.
+`framework/` — everything the loop produced. It leaves `loop/runs/` alone, so the cost history of
+previous runs survives a reset and stays comparable.
 
 Without `--yes` it prints that list and changes nothing, which is the safe way to see what a reset
 would cost before agreeing to it.
+
+**Two sharp edges, both worth knowing before you type anything.**
+
+`npm run reset -- --yes --stage tests` **is refused**, on purpose. It would reset the twenty tracker
+rows while leaving the twenty generated scenarios on disk, and the gate requires the scenario count
+to equal the done count plus one — so the first turn would be rejected with "20 scenarios against 0
+done rows" and the run would stop after three failures having built nothing. To rebuild the tests,
+rebuild the framework with them. To **add** criteria, no reset is needed at all — that is section 4.
+
+`npm run reset -- --yes --stage scaffold` is **not** refused and is the more dangerous of the two.
+It deletes `framework/` but resets only the scaffold tracker, leaving the tests tracker at twenty
+rows of `done`. Stage 0 then rebuilds a framework with empty feature skeletons while the tracker
+claims every criterion is finished, stage 1 finds no actionable row, and **exits successfully in
+silence**. You end up with a framework and no tests, and no error anywhere. The safe command is the
+plain `npm run reset -- --yes`.
 
 ---
 
@@ -376,6 +453,23 @@ appears, the loop reports it as uncommitted work — add it to `.gitignore`, the
 Read the failure: the tracker and the flow documents disagree about which criteria exist, an id names
 a flow other than its row's group, or a title diverges from the Test plan table. That is section 4
 step 5 doing its job — fix the data before running the loop.
+
+**The runner exits 2 immediately after you added tracker rows**
+The `**Total:**` line still says the old count. The runner cross-checks it against the rows it
+parsed and refuses to start when they disagree. Section 4, step 4.
+
+**`20 scenarios against 0 done rows`**
+The tracker was reset while the generated scenarios were left on disk — almost always
+`npm run reset -- --stage tests`, which is refused now, or a hand-edited tracker. Section 7.
+
+**Stage 1 finishes instantly and writes nothing**
+Not a crash and not a success: there was no actionable row. Usually the tests tracker still says
+`done` for everything — see the `--stage scaffold` trap in section 7 — or `--flow` names a slice
+whose rows are all finished. `node loop/ralph.mjs --stage tests --dry-run` says which rows it can see.
+
+**`check:invariants` is red but every test passes**
+Expected, and the point of it: it checks properties of the whole project, not of one test. Read
+which of the seven failed — a forgotten route and a second HTTP client both look like this.
 
 ---
 
