@@ -22,3 +22,17 @@ Feature: F-03 Pet visit: recording the entry and the visit history
     Then the owner details show the pet with its recorded visit
     When the visits log is requested
     Then the visit appears exactly once in the visits list with the pet's id
+
+  @AC-F03-02 @US-05 @US-02
+  Scenario: AC-F03-02 a visit from the clinic-wide log lands in the history of the same pet
+    Given an owner is registered
+    And the pet types directory is requested
+    And a pet is added to the owner
+    When a visit is recorded for the pet
+    Then the created visit has an assigned id, the submitted values and a link to the pet
+    When a visit is recorded in the clinic log
+    Then the visit recorded in the clinic log carries the pet's id and an id distinct from the first visit
+    When the pet details are opened
+    Then the pet details show both visits recorded for it
+    When the visits log is requested
+    Then both visits appear in the visits list with the pet's id

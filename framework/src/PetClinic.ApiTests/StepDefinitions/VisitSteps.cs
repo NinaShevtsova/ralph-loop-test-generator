@@ -77,6 +77,7 @@ public sealed class VisitSteps
         var created = response.Body ?? throw new InvalidOperationException("POST /visits answered 201 with no body.");
 
         _state.CreatedVisit = created;
+        _state.Set("VisitCreateRequest", visit);
         _state.Set("VisitCreateResponse", response);
         _state.Tracker.TrackVisit(created.Id ?? throw new InvalidOperationException("Created visit carries no id."));
     }

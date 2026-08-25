@@ -15,5 +15,22 @@
       "description": "Rabies shot qwerty",
       "date": "2026-07-01"
     }
+  },
+  "AC-F03-02": {
+    "owner": {
+      "firstName": "Yuliia",
+      "lastName": "Marchenko",
+      "address": "27 Soborna Square",
+      "city": "Zaporizhzhia",
+      "telephone": "0679876543"
+    },
+    "pet": {
+      "name": "Pet",
+      "birthDate": "2019-01-20"
+    },
+    "visit": {
+      "description": "Skin check qwerty",
+      "date": "2026-06-15"
+    }
   }
 }

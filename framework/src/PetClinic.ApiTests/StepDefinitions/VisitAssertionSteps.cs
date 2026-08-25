@@ -100,4 +100,79 @@ public sealed class VisitAssertionSteps
         fetched.Description.Should().Be(submitted.Description, $"visit {visitId}'s description must be unaffected by changing pet {petId}'s data");
         fetched.Date.Should().Be(submitted.Date, $"visit {visitId}'s date must be unaffected by changing pet {petId}'s data");
     }
+
+    // AC-F03-02 step 2: mirrors "the second pet has its own id, distinct from the first pet"
+    // (PetAssertionSteps) for §7's other visit-creation route -- compared against VisitCreateResponse,
+    // which "a visit is recorded in the clinic log" writes, against VisitAddResponse from the earlier
+    // nested-route visit.
+    [Then("the visit recorded in the clinic log carries the pet's id and an id distinct from the first visit")]
+    public void TheVisitRecordedInTheClinicLogCarriesThePetsIdAndAnIdDistinctFromTheFirstVisit()
+    {
+        var first = _state.Get<ApiResponse<Visit>>("VisitAddResponse").Body
+            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets/{petId}/visits answered 201 with no body.");
+        var second = _state.Get<ApiResponse<Visit>>("VisitCreateResponse").Body
+            ?? throw new InvalidOperationException("POST /visits answered 201 with no body.");
+        var petId = _state.CreatedPet.Id;
+
+        second.Id.Should().NotBeNull("recording a visit in the clinic log must return the id the API assigned it");
+        second.PetId.Should().Be(petId, $"visit {second.Id} recorded in the clinic log must carry a link back to pet {petId}");
+        second.Id.Should().NotBe(first.Id, $"the visit recorded in the clinic log must get its own id, distinct from the first visit {first.Id}");
+    }
+
+    // AC-F03-02 step 3: both visits -- one from each creation route -- must be visible together in
+    // the same pet's history, each still matching what was actually submitted for it (VisitAddRequest
+    // for the nested route, VisitCreateRequest for the clinic-wide one).
+    [Then("the pet details show both visits recorded for it")]
+    public void ThePetDetailsShowBothVisitsRecordedForIt()
+    {
+        var fetched = _state.Get<ApiResponse<Pet>>("PetGetByIdResponse").Body
+            ?? throw new InvalidOperationException("GET /pets/{petId} answered 200 with no body.");
+        var petId = fetched.Id;
+
+        var firstVisit = _state.Get<ApiResponse<Visit>>("VisitAddResponse").Body
+            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets/{petId}/visits answered 201 with no body.");
+        var firstSubmitted = _state.Get<Visit>("VisitAddRequest");
+        var secondVisit = _state.Get<ApiResponse<Visit>>("VisitCreateResponse").Body
+            ?? throw new InvalidOperationException("POST /visits answered 201 with no body.");
+        var secondSubmitted = _state.Get<Visit>("VisitCreateRequest");
+
+        fetched.Visits.Should().NotBeNull($"pet {petId}'s details must carry a visits field");
+
+        fetched.Visits.Should().Contain(v => v.Id == firstVisit.Id,
+            $"pet {petId}'s visit history must show the visit recorded from its own details ({firstVisit.Id})");
+        var recordedFirst = fetched.Visits!.Single(v => v.Id == firstVisit.Id);
+        recordedFirst.Description.Should().Be(firstSubmitted.Description, $"visit {firstVisit.Id}'s description must match what was submitted");
+        recordedFirst.Date.Should().Be(firstSubmitted.Date, $"visit {firstVisit.Id}'s date must match what was submitted");
+        recordedFirst.PetId.Should().Be(petId, $"visit {firstVisit.Id} must link back to pet {petId}");
+
+        fetched.Visits.Should().Contain(v => v.Id == secondVisit.Id,
+            $"pet {petId}'s visit history must show the visit recorded in the clinic-wide log ({secondVisit.Id})");
+        var recordedSecond = fetched.Visits!.Single(v => v.Id == secondVisit.Id);
+        recordedSecond.Description.Should().Be(secondSubmitted.Description, $"visit {secondVisit.Id}'s description must match what was submitted");
+        recordedSecond.Date.Should().Be(secondSubmitted.Date, $"visit {secondVisit.Id}'s date must match what was submitted");
+        recordedSecond.PetId.Should().Be(petId, $"visit {secondVisit.Id} must link back to pet {petId}");
+    }
+
+    // AC-F03-02 step 4: plural counterpart of "the visit appears exactly once in the visits list
+    // with the pet's id" -- both routes' visits must be present in the clinic-wide log, each linked
+    // back to the same pet.
+    [Then("both visits appear in the visits list with the pet's id")]
+    public void BothVisitsAppearInTheVisitsListWithThePetsId()
+    {
+        var petId = _state.CreatedPet.Id;
+        var firstVisitId = _state.Get<ApiResponse<Visit>>("VisitAddResponse").Body?.Id
+            ?? throw new InvalidOperationException("POST /owners/{ownerId}/pets/{petId}/visits answered 201 with no body.");
+        var secondVisitId = _state.Get<ApiResponse<Visit>>("VisitCreateResponse").Body?.Id
+            ?? throw new InvalidOperationException("POST /visits answered 201 with no body.");
+        var log = _state.Get<ApiResponse<List<Visit>>>("VisitLogResponse").Body
+            ?? throw new InvalidOperationException("GET /visits answered 200 with no body.");
+
+        log.Should().ContainSingle(v => v.Id == firstVisitId,
+            $"visit {firstVisitId} must appear exactly once in the clinic-wide visits log");
+        log.Single(v => v.Id == firstVisitId).PetId.Should().Be(petId, $"visit {firstVisitId}'s entry in the visits log must link back to pet {petId}");
+
+        log.Should().ContainSingle(v => v.Id == secondVisitId,
+            $"visit {secondVisitId} must appear exactly once in the clinic-wide visits log");
+        log.Single(v => v.Id == secondVisitId).PetId.Should().Be(petId, $"visit {secondVisitId}'s entry in the visits log must link back to pet {petId}");
+    }
 }
